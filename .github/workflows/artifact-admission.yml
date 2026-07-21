@@ -565,7 +565,7 @@ jobs:
           PY
           printf 'signer_workflow=%s\n' \
             'EvoRiseKsa/evoom-guard-v4-finalizer-pilot/.github/workflows/trusted-artifact-builder.yml' >> "$GITHUB_OUTPUT"
-          printf 'signer_digest=%s\n' '27a233f41b9914aa67fdf70edefd45fe3dfc05ee' >> "$GITHUB_OUTPUT"
+          printf 'signer_digest=%s\n' '8083c3763e3472ff8616bd645b016ad0779da91d' >> "$GITHUB_OUTPUT"
           printf 'subject=%s\n' "$RUNNER_TEMP/subject/calc-source-artifact.json" >> "$GITHUB_OUTPUT"
           printf 'gh=%s\n' "$RUNNER_TEMP/gh_2.90.0_linux_amd64/bin/gh" >> "$GITHUB_OUTPUT"
 
@@ -621,7 +621,7 @@ jobs:
           normalized = {re.sub(r"[^a-z]", "", key.lower()): value for key, value in certificate.items()}
           required = {
               "runinvocationuri": expected,
-              "buildsignerdigest": "27a233f41b9914aa67fdf70edefd45fe3dfc05ee",
+              "buildsignerdigest": "8083c3763e3472ff8616bd645b016ad0779da91d",
               "sourcerepositorydigest": os.environ["EXPECTED_HEAD_SHA"],
               "issuer": "https://token.actions.githubusercontent.com",
               "runnerenvironment": "github-hosted",
@@ -629,7 +629,7 @@ jobs:
               "sourcerepositoryidentifier": os.environ["GITHUB_REPOSITORY_ID"],
               "buildsigneruri": (
                   f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/.github/workflows/"
-                  "trusted-artifact-builder.yml@27a233f41b9914aa67fdf70edefd45fe3dfc05ee"
+                  "trusted-artifact-builder.yml@8083c3763e3472ff8616bd645b016ad0779da91d"
               ),
           }
           required["sourcerepositoryref"] = os.environ["EXPECTED_SOURCE_REF"]
@@ -1013,7 +1013,7 @@ jobs:
               "head_sha": os.environ["HEAD_SHA"],
               "pr_number": int(os.environ["PR_NUMBER"]),
               "repository": os.environ["GITHUB_REPOSITORY"],
-              "signer_digest": "27a233f41b9914aa67fdf70edefd45fe3dfc05ee",
+              "signer_digest": "8083c3763e3472ff8616bd645b016ad0779da91d",
               "signer_workflow": (
                   "EvoRiseKsa/evoom-guard-v4-finalizer-pilot/"
                   ".github/workflows/trusted-artifact-builder.yml"
