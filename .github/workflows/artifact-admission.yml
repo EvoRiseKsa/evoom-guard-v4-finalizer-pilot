@@ -569,6 +569,54 @@ jobs:
           printf 'subject=%s\n' "$RUNNER_TEMP/subject/calc-source-artifact.json" >> "$GITHUB_OUTPUT"
           printf 'gh=%s\n' "$RUNNER_TEMP/gh_2.90.0_linux_amd64/bin/gh" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare a lower-privilege provider process wrapper
+        env:
+          PINNED_GH: ${{ steps.proof.outputs.gh }}
+        run: |
+          set -euo pipefail
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin evoguard-gh
+          sudo install -d -o root -g root -m 0755 /opt/evoguard/provider
+          sudo install -o root -g root -m 0755 "$PINNED_GH" /opt/evoguard/provider/gh
+          cmp --silent "$PINNED_GH" /opt/evoguard/provider/gh
+          test "$(stat -c '%U:%G:%a' /opt/evoguard/provider/gh)" = 'root:root:755'
+          python - "$RUNNER_TEMP/evoguard-gh-wrapper" <<'PY'
+          from pathlib import Path
+          import sys
+          target = Path(sys.argv[1])
+          target.write_text(
+              "#!/usr/bin/env bash\n"
+              "set -euo pipefail\n"
+              "if (( $# < 3 )) || [[ \"$1\" != attestation || \"$2\" != verify ]]; then\n"
+              "  echo 'refusing non-attestation provider invocation' >&2\n"
+              "  exit 64\n"
+              "fi\n"
+              "if [[ ! -f \"$3\" || -L \"$3\" ]]; then\n"
+              "  echo 'provider subject must be a regular, non-symlink file' >&2\n"
+              "  exit 65\n"
+              "fi\n"
+              "provider_root=\"$(mktemp -d /tmp/evoguard-gh.XXXXXXXXXX)\"\n"
+              "cleanup() { sudo rm -rf -- \"$provider_root\"; }\n"
+              "trap cleanup EXIT HUP INT TERM\n"
+              "chmod 0755 \"$provider_root\"\n"
+              "install -m 0444 -- \"$3\" \"$provider_root/subject\"\n"
+              "cmp --silent \"$3\" \"$provider_root/subject\"\n"
+              "install -d -m 0700 \"$provider_root/config\" \"$provider_root/cache\"\n"
+              "sudo chown -R evoguard-gh:evoguard-gh \"$provider_root/config\" \"$provider_root/cache\"\n"
+              "args=(\"$@\")\n"
+              "args[2]=\"$provider_root/subject\"\n"
+              "set +e\n"
+              "sudo --preserve-env=GH_TOKEN,GITHUB_TOKEN,NO_COLOR,CLICOLOR -H -u evoguard-gh -- "
+              "/usr/bin/env GH_CONFIG_DIR=\"$provider_root/config\" "
+              "XDG_CACHE_HOME=\"$provider_root/cache\" "
+              "/opt/evoguard/provider/gh \"${args[@]}\"\n"
+              "code=$?\n"
+              "set -e\n"
+              "exit \"$code\"\n",
+              encoding="utf-8",
+          )
+          target.chmod(0o755)
+          PY
+
       - name: Make a fresh provider check before any admission key is materialized
         env:
           GH_TOKEN: ${{ github.token }}
@@ -577,7 +625,6 @@ jobs:
           SIGNER_WORKFLOW: ${{ steps.proof.outputs.signer_workflow }}
           SIGNER_DIGEST: ${{ steps.proof.outputs.signer_digest }}
           SUBJECT: ${{ steps.proof.outputs.subject }}
-          PINNED_GH: ${{ steps.proof.outputs.gh }}
           BUILD_RUN_ID: ${{ needs.preflight.outputs.build_run_id }}
           BUILD_RUN_ATTEMPT: ${{ needs.preflight.outputs.build_run_attempt }}
         run: |
@@ -589,7 +636,8 @@ jobs:
             --signer-digest "$SIGNER_DIGEST" --source-ref "$SOURCE_REF" \
             --source-digest "$HEAD_SHA" \
             --cert-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            --gh-executable "$PINNED_GH" | tee "$RUNNER_TEMP/prekey-provider-report.json"
+            --gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper" \
+            | tee "$RUNNER_TEMP/prekey-provider-report.json"
 
       - name: Bind the provider certificate to the exact build run and attempt
         env:
@@ -651,41 +699,6 @@ jobs:
               json.dump(report, target, sort_keys=True, separators=(",", ":"))
               target.write("\n")
           PY
-      - name: Prepare a lower-privilege provider process wrapper
-        env:
-          PINNED_GH: ${{ steps.proof.outputs.gh }}
-        run: |
-          set -euo pipefail
-          sudo useradd --system --no-create-home --shell /usr/sbin/nologin evoguard-gh
-          install -d -m 0700 "$RUNNER_TEMP/gh-config"
-          install -d -m 0700 "$RUNNER_TEMP/gh-cache"
-          printf 'GH_CONFIG_DIR=%s\n' "$RUNNER_TEMP/gh-config" >> "$GITHUB_ENV"
-          printf 'XDG_CACHE_HOME=%s\n' "$RUNNER_TEMP/gh-cache" >> "$GITHUB_ENV"
-          python - "$RUNNER_TEMP/evoguard-gh-wrapper" "$PINNED_GH" <<'PY'
-          from pathlib import Path
-          import shlex
-          import sys
-          target, gh = map(Path, sys.argv[1:])
-          target.write_text(
-              "#!/usr/bin/env bash\n"
-              "set -euo pipefail\n"
-              ": \"${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}\"\n"
-              ": \"${XDG_CACHE_HOME:?XDG_CACHE_HOME must be set}\"\n"
-              "chmod 0755 \"$PWD\"\n"
-              "chmod 0644 \"$3\"\n"
-              "sudo chown -R evoguard-gh:evoguard-gh \"$GH_CONFIG_DIR\" \"$XDG_CACHE_HOME\"\n"
-              "set +e\n"
-              "sudo --preserve-env=GH_TOKEN,GITHUB_TOKEN,GH_CONFIG_DIR,XDG_CACHE_HOME,NO_COLOR,CLICOLOR "
-              "-H -u evoguard-gh -- " + shlex.quote(str(gh)) + " \"$@\"\n"
-              "code=$?\n"
-              "set -e\n"
-              "sudo chown -R \"$(id -u):$(id -g)\" \"$GH_CONFIG_DIR\" \"$XDG_CACHE_HOME\"\n"
-              "exit \"$code\"\n",
-              encoding="utf-8",
-          )
-          target.chmod(0o755)
-          PY
-
       - name: Materialize the distinct admission key only after provider preflight
         env:
           EVOGUARD_ARTIFACT_ADMISSION_KEY: ${{ secrets.EVOGUARD_ARTIFACT_ADMISSION_KEY }}
