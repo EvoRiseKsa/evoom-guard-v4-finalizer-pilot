@@ -67,6 +67,44 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
 
+    def test_admission_cross_run_downloads_select_the_validated_run_ids(self) -> None:
+        text = ADMISSION.read_text(encoding="utf-8")
+        cases = (
+            (
+                "Download the exact build control artifact",
+                "Validate build control and revalidate every referenced finalizer artifact",
+                "run-id: ${{ github.event.workflow_run.id }}",
+            ),
+            (
+                "Download the exact attested subject",
+                "Download the exact builder audit control",
+                "run-id: ${{ needs.preflight.outputs.build_run_id }}",
+            ),
+            (
+                "Download the exact builder audit control",
+                "Download the exact finalizer control",
+                "run-id: ${{ needs.preflight.outputs.build_run_id }}",
+            ),
+            (
+                "Download the exact finalizer control",
+                "Download the exact finalizer evidence",
+                "run-id: ${{ needs.preflight.outputs.finalizer_reverify_run_id }}",
+            ),
+            (
+                "Download the exact finalizer evidence",
+                "Download the exact signed finalizer bundle",
+                "run-id: ${{ needs.preflight.outputs.finalizer_reverify_run_id }}",
+            ),
+            (
+                "Download the exact signed finalizer bundle",
+                "Set up the admission verification runtime",
+                "run-id: ${{ needs.preflight.outputs.finalizer_seal_run_id }}",
+            ),
+        )
+        for start, end, expected in cases:
+            block = text[text.index(start) : text.index(end)]
+            self.assertIn(expected, block)
+
     def test_admission_pins_provider_policy_and_runtimes(self) -> None:
         text = ADMISSION.read_text(encoding="utf-8")
         for token in (

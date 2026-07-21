@@ -72,6 +72,29 @@ class ArtifactBuilderContractTests(unittest.TestCase):
             self.assertIn(token, text)
         self.assertIn("MCowBQYDK2VwAyEA4JaVN8axu8ERZTzSXdoDe7uznDO0Tf/zltCQm6jr/5o=", text)
 
+    def test_cross_run_artifact_downloads_select_the_validated_run_ids(self) -> None:
+        text = BUILDER.read_text(encoding="utf-8")
+        cases = (
+            (
+                "Download the exact immutable finalizer control artifact",
+                "Download the exact re-verification evidence artifact",
+                "run-id: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}",
+            ),
+            (
+                "Download the exact re-verification evidence artifact",
+                "Download the exact signed finalizer bundle artifact",
+                "run-id: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}",
+            ),
+            (
+                "Download the exact signed finalizer bundle artifact",
+                "Download and verify the reviewed Guard",
+                "run-id: ${{ steps.preflight.outputs.finalizer_seal_run_id }}",
+            ),
+        )
+        for start, end, expected in cases:
+            block = text[text.index(start) : text.index(end)]
+            self.assertIn(expected, block)
+
     def test_builder_uses_reviewed_runtime_and_hash_locked_verifier(self) -> None:
         text = BUILDER.read_text(encoding="utf-8")
         self.assertIn("releases/download/v4.0.2/evo-guard.pyz", text)
