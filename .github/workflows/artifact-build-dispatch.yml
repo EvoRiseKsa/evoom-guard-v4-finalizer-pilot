@@ -32,4 +32,3 @@ jobs:
       pr_number: ${{ inputs.pr_number }}
       finalizer_reverify_run_id: ${{ inputs.finalizer_reverify_run_id }}
       finalizer_seal_run_id: ${{ inputs.finalizer_seal_run_id }}
-
