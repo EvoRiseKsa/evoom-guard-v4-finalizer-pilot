@@ -1,0 +1,34 @@
+name: EvoGuard Artifact Build
+run-name: "EvoGuard Artifact Build PR #${{ inputs.pr_number }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open same-repository source-only PR number
+        required: true
+        type: string
+      finalizer_reverify_run_id:
+        description: Fresh successful EvoGuard Reverify run ID for this exact PR head
+        required: true
+        type: string
+      finalizer_seal_run_id:
+        description: Fresh successful dependent EvoGuard Seal run ID
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  build:
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+      pull-requests: read
+    uses: EvoRiseKsa/evoom-guard-v4-finalizer-pilot/.github/workflows/trusted-artifact-builder.yml@c6de26095c84e654c2cc5adcb00885ac9b6a2362
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      finalizer_reverify_run_id: ${{ inputs.finalizer_reverify_run_id }}
+      finalizer_seal_run_id: ${{ inputs.finalizer_seal_run_id }}

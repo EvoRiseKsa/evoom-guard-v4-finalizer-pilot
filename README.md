@@ -50,4 +50,10 @@ bare Git object store without checking out or executing candidate code. No
 artifact-admission decision is enabled merely by installing that reusable
 workflow.
 
+The Phase B dispatcher is pinned to the exact Phase A merge commit. Its
+separate `workflow_run` admission path performs an unprivileged provider
+preflight before a protected Environment can materialize the distinct
+admission key. See the status document for the still-required live run; the
+presence of workflow files alone is not evidence of an admitted artifact.
+
 This repository is source-available under [LICENSE](LICENSE).
