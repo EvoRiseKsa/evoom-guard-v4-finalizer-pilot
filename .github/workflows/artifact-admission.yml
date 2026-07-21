@@ -652,7 +652,9 @@ jobs:
           set -euo pipefail
           sudo useradd --system --no-create-home --shell /usr/sbin/nologin evoguard-gh
           install -d -m 0700 "$RUNNER_TEMP/gh-config"
+          install -d -m 0700 "$RUNNER_TEMP/gh-cache"
           printf 'GH_CONFIG_DIR=%s\n' "$RUNNER_TEMP/gh-config" >> "$GITHUB_ENV"
+          printf 'XDG_CACHE_HOME=%s\n' "$RUNNER_TEMP/gh-cache" >> "$GITHUB_ENV"
           python - "$RUNNER_TEMP/evoguard-gh-wrapper" "$PINNED_GH" <<'PY'
           from pathlib import Path
           import shlex
@@ -662,15 +664,16 @@ jobs:
               "#!/usr/bin/env bash\n"
               "set -euo pipefail\n"
               ": \"${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}\"\n"
+              ": \"${XDG_CACHE_HOME:?XDG_CACHE_HOME must be set}\"\n"
               "chmod 0755 \"$PWD\"\n"
               "chmod 0644 \"$3\"\n"
-              "sudo chown -R evoguard-gh:evoguard-gh \"$GH_CONFIG_DIR\"\n"
+              "sudo chown -R evoguard-gh:evoguard-gh \"$GH_CONFIG_DIR\" \"$XDG_CACHE_HOME\"\n"
               "set +e\n"
-              "sudo --preserve-env=GH_TOKEN,GITHUB_TOKEN,GH_CONFIG_DIR,NO_COLOR,CLICOLOR "
+              "sudo --preserve-env=GH_TOKEN,GITHUB_TOKEN,GH_CONFIG_DIR,XDG_CACHE_HOME,NO_COLOR,CLICOLOR "
               "-H -u evoguard-gh -- " + shlex.quote(str(gh)) + " \"$@\"\n"
               "code=$?\n"
               "set -e\n"
-              "sudo chown -R \"$(id -u):$(id -g)\" \"$GH_CONFIG_DIR\"\n"
+              "sudo chown -R \"$(id -u):$(id -g)\" \"$GH_CONFIG_DIR\" \"$XDG_CACHE_HOME\"\n"
               "exit \"$code\"\n",
               encoding="utf-8",
           )

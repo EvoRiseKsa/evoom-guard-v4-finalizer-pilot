@@ -106,7 +106,10 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
             text.index("- name: Materialize the distinct admission key")
         ]
         self.assertIn('GH_CONFIG_DIR=%s\\n', wrapper)
+        self.assertIn('XDG_CACHE_HOME=%s\\n', wrapper)
         self.assertIn('${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}', wrapper)
+        self.assertIn('${XDG_CACHE_HOME:?XDG_CACHE_HOME must be set}', wrapper)
+        self.assertIn('GH_CONFIG_DIR,XDG_CACHE_HOME', wrapper)
         self.assertIn("-u evoguard-gh", wrapper)
 
     def test_public_checksum_manifest_covers_pinned_tool_hashes(self) -> None:
