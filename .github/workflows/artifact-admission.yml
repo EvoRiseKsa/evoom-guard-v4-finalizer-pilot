@@ -589,6 +589,9 @@ jobs:
         env:
           BUILD_RUN_ID: ${{ needs.preflight.outputs.build_run_id }}
           BUILD_RUN_ATTEMPT: ${{ needs.preflight.outputs.build_run_attempt }}
+          EXPECTED_HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_SOURCE_REF: ${{ needs.preflight.outputs.source_ref }}
+          GITHUB_REPOSITORY_ID: ${{ github.event.repository.id }}
         run: |
           set -euo pipefail
           python - "$RUNNER_TEMP/prekey-attestation.raw.json" <<'PY'
@@ -648,6 +651,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo useradd --system --no-create-home --shell /usr/sbin/nologin evoguard-gh
+          install -d -m 0700 "$RUNNER_TEMP/gh-config"
+          printf 'GH_CONFIG_DIR=%s\n' "$RUNNER_TEMP/gh-config" >> "$GITHUB_ENV"
           python - "$RUNNER_TEMP/evoguard-gh-wrapper" "$PINNED_GH" <<'PY'
           from pathlib import Path
           import shlex
@@ -656,6 +661,7 @@ jobs:
           target.write_text(
               "#!/usr/bin/env bash\n"
               "set -euo pipefail\n"
+              ": \"${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}\"\n"
               "chmod 0755 \"$PWD\"\n"
               "chmod 0644 \"$3\"\n"
               "sudo chown -R evoguard-gh:evoguard-gh \"$GH_CONFIG_DIR\"\n"
@@ -956,9 +962,11 @@ jobs:
               "finalizer-evidence/verdict.json",
               "finalizer-public.pem",
               "fresh-provider-reverify-report.json",
+              "gh.sha256",
               "gh-version.txt",
               "github-attestation.raw.json",
               "github-attestation.receipt.json",
+              "guard.sha256",
               "guard-version.txt",
               "negative-controls.json",
               "prekey-attestation.raw.json",

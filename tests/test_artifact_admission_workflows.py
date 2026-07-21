@@ -84,6 +84,37 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
 
+    def test_certificate_binding_receives_every_dynamic_policy_input(self) -> None:
+        text = ADMISSION.read_text(encoding="utf-8")
+        block = text[
+            text.index("- name: Bind the provider certificate") :
+            text.index("- name: Prepare a lower-privilege provider process wrapper")
+        ]
+        for token in (
+            "BUILD_RUN_ID: ${{ needs.preflight.outputs.build_run_id }}",
+            "BUILD_RUN_ATTEMPT: ${{ needs.preflight.outputs.build_run_attempt }}",
+            "EXPECTED_HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}",
+            "EXPECTED_SOURCE_REF: ${{ needs.preflight.outputs.source_ref }}",
+            "GITHUB_REPOSITORY_ID: ${{ github.event.repository.id }}",
+        ):
+            self.assertIn(token, block)
+
+    def test_lower_privilege_provider_has_an_explicit_config_directory(self) -> None:
+        text = ADMISSION.read_text(encoding="utf-8")
+        wrapper = text[
+            text.index("- name: Prepare a lower-privilege provider process wrapper") :
+            text.index("- name: Materialize the distinct admission key")
+        ]
+        self.assertIn('GH_CONFIG_DIR=%s\\n', wrapper)
+        self.assertIn('${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}', wrapper)
+        self.assertIn("-u evoguard-gh", wrapper)
+
+    def test_public_checksum_manifest_covers_pinned_tool_hashes(self) -> None:
+        text = ADMISSION.read_text(encoding="utf-8")
+        manifest = text[text.index('names = [') : text.index('(root / "SHA256SUMS")')]
+        self.assertIn('"guard.sha256"', manifest)
+        self.assertIn('"gh.sha256"', manifest)
+
     def test_admission_seals_verifies_freshly_rechecks_and_has_negatives(self) -> None:
         text = ADMISSION.read_text(encoding="utf-8")
         for token in (
