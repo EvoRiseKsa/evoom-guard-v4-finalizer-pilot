@@ -138,6 +138,9 @@ jobs:
               finalizer_reverify_evidence_artifact_id: String(reverifyEvidence.id),
               finalizer_reverify_evidence_artifact_digest: reverifyEvidence.digest,
               finalizer_seal_run_id: String(sealRunId),
+              finalizer_seal_run_attempt: String(seal.run_attempt),
+              finalizer_seal_workflow_id: String(seal.workflow_id),
+              finalizer_seal_head_sha: seal.head_sha,
               finalizer_bundle_artifact_id: String(finalized.id),
               finalizer_bundle_artifact_digest: finalized.digest,
             };
@@ -373,7 +376,11 @@ jobs:
           HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
           SOURCE_REF: ${{ steps.preflight.outputs.source_ref }}
           FINALIZER_REVERIFY_RUN_ID: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}
+          FINALIZER_REVERIFY_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_reverify_run_attempt }}
           FINALIZER_SEAL_RUN_ID: ${{ steps.preflight.outputs.finalizer_seal_run_id }}
+          FINALIZER_SEAL_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_seal_run_attempt }}
+          FINALIZER_SEAL_WORKFLOW_ID: ${{ steps.preflight.outputs.finalizer_seal_workflow_id }}
+          FINALIZER_SEAL_HEAD_SHA: ${{ steps.preflight.outputs.finalizer_seal_head_sha }}
           OBJECT_STORE: ${{ runner.temp }}/evoguard-artifact-objects.git
         run: |
           set -euo pipefail
@@ -438,7 +445,11 @@ jobs:
               "format": "EVOGUARD_ARTIFACT_ADMISSION_PILOT_SUBJECT_V1",
               "finalizer": {
                   "reverify_run_id": os.environ["FINALIZER_REVERIFY_RUN_ID"],
+                  "reverify_run_attempt": int(os.environ["FINALIZER_REVERIFY_RUN_ATTEMPT"]),
                   "seal_run_id": os.environ["FINALIZER_SEAL_RUN_ID"],
+                  "seal_run_attempt": int(os.environ["FINALIZER_SEAL_RUN_ATTEMPT"]),
+                  "seal_workflow_id": os.environ["FINALIZER_SEAL_WORKFLOW_ID"],
+                  "seal_head_sha": os.environ["FINALIZER_SEAL_HEAD_SHA"],
               },
               "source": {
                   "base_sha": os.environ["BASE_SHA"],
@@ -497,6 +508,9 @@ jobs:
           FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_ID: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_id }}
           FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_DIGEST: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_digest }}
           FINALIZER_SEAL_RUN_ID: ${{ steps.preflight.outputs.finalizer_seal_run_id }}
+          FINALIZER_SEAL_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_seal_run_attempt }}
+          FINALIZER_SEAL_WORKFLOW_ID: ${{ steps.preflight.outputs.finalizer_seal_workflow_id }}
+          FINALIZER_SEAL_HEAD_SHA: ${{ steps.preflight.outputs.finalizer_seal_head_sha }}
           FINALIZER_BUNDLE_ARTIFACT_ID: ${{ steps.preflight.outputs.finalizer_bundle_artifact_id }}
           FINALIZER_BUNDLE_ARTIFACT_DIGEST: ${{ steps.preflight.outputs.finalizer_bundle_artifact_digest }}
           FINALIZER_BINDINGS_SHA256: ${{ steps.finalizer.outputs.bindings_sha256 }}
@@ -507,22 +521,60 @@ jobs:
           import hashlib
           import json
           import os
+          import re
           import stat
           import sys
+          from urllib.parse import urlparse
 
           control_path, retained_attestation_path = sys.argv[1:]
           bundle_path = os.path.abspath(os.environ["ATTESTATION_BUNDLE"])
-          metadata = os.lstat(bundle_path)
-          if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 16 * 1024 * 1024:
-              raise SystemExit("refuse missing, non-regular, or oversized attestation bundle")
-          with open(bundle_path, "rb") as source:
-              attestation = source.read()
+          descriptor = os.open(bundle_path, os.O_RDONLY | os.O_NOFOLLOW)
+          try:
+              metadata = os.fstat(descriptor)
+              if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= 16 * 1024 * 1024:
+                  raise SystemExit("refuse missing, non-regular, or oversized attestation bundle")
+              with os.fdopen(descriptor, "rb", closefd=False) as source:
+                  attestation = source.read()
+          finally:
+              os.close(descriptor)
           if len(attestation) != metadata.st_size:
               raise SystemExit("attestation bundle changed while reading")
           with open(retained_attestation_path, "xb") as target:
               target.write(attestation)
 
           values = os.environ
+          for name in (
+              "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "SUBJECT_ARTIFACT_ID",
+              "FINALIZER_REVERIFY_RUN_ID", "FINALIZER_REVERIFY_RUN_ATTEMPT",
+              "FINALIZER_REVERIFY_CONTROL_ARTIFACT_ID",
+              "FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_ID", "FINALIZER_SEAL_RUN_ID",
+              "FINALIZER_SEAL_RUN_ATTEMPT", "FINALIZER_SEAL_WORKFLOW_ID",
+              "FINALIZER_BUNDLE_ARTIFACT_ID",
+          ):
+              if re.fullmatch(r"[1-9][0-9]*", values[name]) is None:
+                  raise SystemExit(f"invalid positive decimal action output: {name}")
+          for name in (
+              "SUBJECT_SHA256", "FINALIZER_BINDINGS_SHA256", "FINALIZER_BUNDLE_SHA256",
+          ):
+              if re.fullmatch(r"[0-9a-f]{64}", values[name]) is None:
+                  raise SystemExit(f"invalid SHA-256 action output: {name}")
+          for name in (
+              "SUBJECT_ARTIFACT_DIGEST", "FINALIZER_BUNDLE_ARTIFACT_DIGEST",
+              "FINALIZER_REVERIFY_CONTROL_ARTIFACT_DIGEST",
+              "FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_DIGEST",
+          ):
+              if re.fullmatch(r"sha256:[0-9a-f]{64}", values[name]) is None:
+                  raise SystemExit(f"invalid GitHub artifact API digest: {name}")
+          if re.fullmatch(r"[0-9a-f]{40}", values["FINALIZER_SEAL_HEAD_SHA"]) is None:
+              raise SystemExit("invalid finalizer Seal head SHA")
+          if not 0 < int(values["SUBJECT_SIZE"]) <= 1024 * 1024:
+              raise SystemExit("invalid subject size")
+          if not 0 < len(values["ATTESTATION_ID"]) <= 512 or re.search(r"[\x00-\x1f\x7f]", values["ATTESTATION_ID"]):
+              raise SystemExit("invalid attestation ID")
+          for name in ("SUBJECT_ARTIFACT_URL", "ATTESTATION_URL"):
+              parsed = urlparse(values[name])
+              if parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.username or parsed.password:
+                  raise SystemExit(f"invalid GitHub URL action output: {name}")
           control = {
               "attestation": {
                   "bundle_sha256": hashlib.sha256(attestation).hexdigest(),
@@ -547,6 +599,9 @@ jobs:
                   "reverify_run_attempt": int(values["FINALIZER_REVERIFY_RUN_ATTEMPT"]),
                   "reverify_run_id": values["FINALIZER_REVERIFY_RUN_ID"],
                   "seal_run_id": values["FINALIZER_SEAL_RUN_ID"],
+                  "seal_run_attempt": int(values["FINALIZER_SEAL_RUN_ATTEMPT"]),
+                  "seal_workflow_id": values["FINALIZER_SEAL_WORKFLOW_ID"],
+                  "seal_head_sha": values["FINALIZER_SEAL_HEAD_SHA"],
               },
               "format": "EVOGUARD_ARTIFACT_BUILD_CONTROL_V1",
               "source": {

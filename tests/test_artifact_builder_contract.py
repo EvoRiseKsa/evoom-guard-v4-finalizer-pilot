@@ -93,11 +93,18 @@ class ArtifactBuilderContractTests(unittest.TestCase):
             "ATTESTATION_ID",
             "FINALIZER_REVERIFY_RUN_ID",
             "FINALIZER_SEAL_RUN_ID",
+            "FINALIZER_SEAL_RUN_ATTEMPT",
+            "FINALIZER_SEAL_WORKFLOW_ID",
+            "FINALIZER_SEAL_HEAD_SHA",
             "FINALIZER_BUNDLE_ARTIFACT_ID",
             "FINALIZER_BUNDLE_ARTIFACT_DIGEST",
         ):
             self.assertIn(token, text)
         self.assertIn('"format": "EVOGUARD_ARTIFACT_BUILD_CONTROL_V1"', text)
+        self.assertIn("invalid positive decimal action output", text)
+        self.assertIn("invalid GitHub artifact API digest", text)
+        self.assertIn("invalid GitHub URL action output", text)
+        self.assertIn("os.O_NOFOLLOW", text)
 
     def test_admission_key_is_distinct_from_finalizer_key(self) -> None:
         admission = pem_key_id(ADMISSION_PUBLIC)
