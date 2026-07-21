@@ -27,12 +27,20 @@ it does **not** enable an artifact-admission decision by itself.
 - [x] A separate artifact-admission public key exists. Its key ID is
   `sha256:cd9db360e786c0f4c5d31881a5953152bb773a86ee9d3716721dbf01658b357b`.
 
-## Phase B — pending after Phase A is merged
+Phase A was merged at immutable commit
+`c6de26095c84e654c2cc5adcb00885ac9b6a2362`; the dispatcher below pins that
+exact commit rather than `main`.
 
-- [ ] Pin a dispatcher to the immutable Phase A merge commit.
-- [ ] Add the protected admission workflow and pin GitHub CLI `v2.90.0` by
+## Phase B — protected admission enablement
+
+- [x] Pin a dispatcher to the immutable Phase A merge commit.
+- [x] Add a split preflight/protected-admission workflow and pin GitHub CLI
+  `v2.90.0` by
   archive SHA-256
   `b2aef7b23ec6899bf27f37a32c57a7935d0a178568ac33dc9bb03842f724195a`.
+- [x] Keep the admission key out of job/seal environments, materialize it only
+  after a fresh provider check, execute the second provider check under a
+  lower-privilege OS identity, and destroy the key before retained checks.
 - [ ] Configure numeric workflow IDs as repository variables.
 - [ ] Configure `evoguard-artifact-admission` with the distinct private key,
   required reviewer, self-review prevention, protected branches only, and no
@@ -41,6 +49,11 @@ it does **not** enable an artifact-admission decision by itself.
   attest the exact regular file, seal one `.eab`, and verify it offline and
   through a fresh GitHub attestation query.
 - [ ] Run live negative controls and retain exact evidence.
+
+The checked workflow files are inert until merged into protected `main` and
+the Environment/variables are configured. Static tests are not live provider
+evidence; the live checkboxes remain open until one new PR completes the full
+sequence.
 
 ## Claim boundary
 
