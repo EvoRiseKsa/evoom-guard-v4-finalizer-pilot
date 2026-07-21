@@ -148,12 +148,15 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
             "sudo install -o root -g root -m 0755",
             "cmp --silent \"$PINNED_GH\" /opt/evoguard/provider/gh",
             "root:root:755",
-            "mktemp -d /tmp/evoguard-gh.XXXXXXXXXX",
-            "install -m 0444",
+            "/usr/bin/mktemp -d /tmp/evoguard-gh.XXXXXXXXXX",
+            "/usr/bin/install -m 0444",
             "provider subject must be a regular, non-symlink file",
             "args[2]=",
+            'cd \\"$provider_root\\"',
             "GH_CONFIG_DIR=",
             "XDG_CACHE_HOME=",
+            "HOME=",
+            "TMPDIR=",
             "/opt/evoguard/provider/gh",
             "trap cleanup EXIT HUP INT TERM",
         ):
@@ -171,6 +174,14 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
         ]
         self.assertIn('--gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper"', prekey)
         self.assertNotIn('--gh-executable "$PINNED_GH"', prekey)
+
+    def test_every_provider_verification_uses_the_low_privilege_wrapper(self) -> None:
+        text = ADMISSION.read_text(encoding="utf-8")
+        self.assertEqual(
+            text.count('--gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper"'),
+            4,
+        )
+        self.assertNotIn('--gh-executable "$PINNED_GH"', text)
 
     def test_public_checksum_manifest_covers_pinned_tool_hashes(self) -> None:
         text = ADMISSION.read_text(encoding="utf-8")
