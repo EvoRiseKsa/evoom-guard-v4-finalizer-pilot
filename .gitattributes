@@ -3,3 +3,4 @@ security/evoguard-pack/** text eol=lf
 *.yml text eol=lf
 *.md text eol=lf
 *.pem text eol=lf
+evidence/artifact-admission/round1/** -text
