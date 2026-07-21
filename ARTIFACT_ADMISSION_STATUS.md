@@ -27,9 +27,12 @@ it does **not** enable an artifact-admission decision by itself.
 - [x] A separate artifact-admission public key exists. Its key ID is
   `sha256:cd9db360e786c0f4c5d31881a5953152bb773a86ee9d3716721dbf01658b357b`.
 
-Phase A was merged at immutable commit
-`c6de26095c84e654c2cc5adcb00885ac9b6a2362`; the dispatcher below pins that
-exact commit rather than `main`.
+Phase A was initially merged at immutable commit
+`c6de26095c84e654c2cc5adcb00885ac9b6a2362`. Live build run `29876087399`
+then failed closed before attestation because cross-run artifact downloads did
+not pass their validated `run-id`. The correction was merged at immutable
+commit `27a233f41b9914aa67fdf70edefd45fe3dfc05ee`; the dispatcher below pins that
+reviewed correction rather than `main`.
 
 ## Phase B — protected admission enablement
 
@@ -41,8 +44,8 @@ exact commit rather than `main`.
 - [x] Keep the admission key out of job/seal environments, materialize it only
   after a fresh provider check, execute the second provider check under a
   lower-privilege OS identity, and destroy the key before retained checks.
-- [ ] Configure numeric workflow IDs as repository variables.
-- [ ] Configure `evoguard-artifact-admission` with the distinct private key,
+- [x] Configure numeric workflow IDs as repository variables.
+- [x] Configure `evoguard-artifact-admission` with the distinct private key,
   required reviewer, self-review prevention, protected branches only, and no
   administrator bypass.
 - [ ] Open a new source-only PR, obtain a fresh finalizer `ALLOW`, build and
@@ -50,10 +53,9 @@ exact commit rather than `main`.
   through a fresh GitHub attestation query.
 - [ ] Run live negative controls and retain exact evidence.
 
-The checked workflow files are inert until merged into protected `main` and
-the Environment/variables are configured. Static tests are not live provider
-evidence; the live checkboxes remain open until one new PR completes the full
-sequence.
+The workflows, variables, and protected Environment are enabled. Static tests
+and the recorded fail-closed probe are not positive live provider evidence;
+the live checkboxes remain open until one new PR completes the full sequence.
 
 ## Claim boundary
 

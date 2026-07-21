@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).parents[1]
 DISPATCH = ROOT / ".github" / "workflows" / "artifact-build-dispatch.yml"
 ADMISSION = ROOT / ".github" / "workflows" / "artifact-admission.yml"
-BUILDER_MERGE = "c6de26095c84e654c2cc5adcb00885ac9b6a2362"
+BUILDER_MERGE = "27a233f41b9914aa67fdf70edefd45fe3dfc05ee"
 
 
 class ArtifactAdmissionWorkflowTests(unittest.TestCase):

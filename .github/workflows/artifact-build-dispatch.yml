@@ -27,7 +27,7 @@ jobs:
       contents: read
       id-token: write
       pull-requests: read
-    uses: EvoRiseKsa/evoom-guard-v4-finalizer-pilot/.github/workflows/trusted-artifact-builder.yml@c6de26095c84e654c2cc5adcb00885ac9b6a2362
+    uses: EvoRiseKsa/evoom-guard-v4-finalizer-pilot/.github/workflows/trusted-artifact-builder.yml@27a233f41b9914aa67fdf70edefd45fe3dfc05ee
     with:
       pr_number: ${{ inputs.pr_number }}
       finalizer_reverify_run_id: ${{ inputs.finalizer_reverify_run_id }}
