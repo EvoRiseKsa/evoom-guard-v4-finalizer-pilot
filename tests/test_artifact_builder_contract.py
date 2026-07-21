@@ -129,6 +129,15 @@ class ArtifactBuilderContractTests(unittest.TestCase):
         self.assertIn("invalid GitHub URL action output", text)
         self.assertIn("os.O_NOFOLLOW", text)
 
+    def test_uploaded_subject_digest_is_normalized_to_artifact_api_form(self) -> None:
+        text = BUILDER.read_text(encoding="utf-8")
+        self.assertIn(
+            "SUBJECT_ARTIFACT_DIGEST: sha256:${{ "
+            "steps.upload_subject.outputs.artifact-digest }}",
+            text,
+        )
+        self.assertIn('r"sha256:[0-9a-f]{64}"', text)
+
     def test_admission_key_is_distinct_from_finalizer_key(self) -> None:
         admission = pem_key_id(ADMISSION_PUBLIC)
         finalizer = pem_key_id(FINALIZER_PUBLIC)

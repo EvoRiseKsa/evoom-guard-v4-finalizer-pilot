@@ -499,7 +499,9 @@ jobs:
           SUBJECT_SHA256: ${{ steps.subject.outputs.sha256 }}
           SUBJECT_SIZE: ${{ steps.subject.outputs.size }}
           SUBJECT_ARTIFACT_ID: ${{ steps.upload_subject.outputs.artifact-id }}
-          SUBJECT_ARTIFACT_DIGEST: ${{ steps.upload_subject.outputs.artifact-digest }}
+          # upload-artifact emits bare hex; the Actions artifact API emits the
+          # same value in canonical algorithm-prefixed form.
+          SUBJECT_ARTIFACT_DIGEST: sha256:${{ steps.upload_subject.outputs.artifact-digest }}
           SUBJECT_ARTIFACT_URL: ${{ steps.upload_subject.outputs.artifact-url }}
           ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
           ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
