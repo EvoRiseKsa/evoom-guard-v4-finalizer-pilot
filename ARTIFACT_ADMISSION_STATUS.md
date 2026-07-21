@@ -11,7 +11,9 @@ it does **not** enable an artifact-admission decision by itself.
 - [x] It requires the PR base to equal current protected `main`, downloads the
   exact Reverify control/evidence and Seal bundle artifact IDs, re-derives the
   raw-Git bindings, and cryptographically verifies a signed finalizer `ALLOW`
-  for the same repository/PR/base/head/run/attempt.
+  for the same repository/PR/base/head/run/attempt. It also requires the signed
+  verdict, handoff, and Git-binding bytes inside the bundle to equal the exact
+  downloaded/re-derived external proofs.
 - [x] It reads three fixed blobs from a bare Git object store with
   `git cat-file`, creates one bounded canonical regular file, and never checks
   out, imports, or executes candidate code.

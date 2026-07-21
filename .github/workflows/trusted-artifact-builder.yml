@@ -80,7 +80,8 @@ jobs:
             const seal = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: sealRunId })).data;
             if (String(reverify.workflow_id) !== process.env.EXPECTED_REVERIFY_WORKFLOW_ID ||
                 reverify.event !== 'workflow_dispatch' || reverify.conclusion !== 'success' ||
-                reverify.head_branch !== 'main' || reverify.head_repository?.full_name !== fullName) {
+                reverify.head_branch !== 'main' || reverify.head_sha !== pr.base.sha ||
+                reverify.head_repository?.full_name !== fullName) {
               throw new Error('finalizer reverify run is not the configured successful protected-main workflow');
             }
             if (String(seal.workflow_id) !== process.env.EXPECTED_SEAL_WORKFLOW_ID ||
@@ -310,6 +311,56 @@ jobs:
             --expected-source "$RUNNER_TEMP/expected-finalizer-source.json" \
             --expected-context "$RUNNER_TEMP/expected-finalizer-context.json" \
             --require-pass
+          python - \
+            "$RUNNER_TEMP/finalizer-bundle/finalized.evb" \
+            "$RUNNER_TEMP/reverify-evidence/verdict.json" \
+            "$RUNNER_TEMP/reverify-evidence/handoff.json" \
+            "$RUNNER_TEMP/derived-finalizer-bindings.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          import zipfile
+
+          bundle_path, verdict_path, handoff_path, bindings_path = map(Path, sys.argv[1:])
+          expected_members = {
+              "bundle.json",
+              "bundle.sig",
+              "record/verdict.json",
+              "materials/000-trusted-finalizer-git-bindings",
+              "materials/001-trusted-finalizer-handoff",
+          }
+          with zipfile.ZipFile(bundle_path) as archive:
+              infos = archive.infolist()
+              names = [info.filename for info in infos]
+              if len(names) != len(set(names)) or set(names) != expected_members:
+                  raise SystemExit("finalizer bundle has an unexpected or duplicate member")
+              if any(info.file_size < 1 or info.file_size > 32 * 1024 * 1024 for info in infos):
+                  raise SystemExit("finalizer bundle member violates size bounds")
+              manifest = json.loads(archive.read("bundle.json"))
+              materials = manifest.get("materials")
+              if not isinstance(materials, list) or len(materials) != 2:
+                  raise SystemExit("finalizer bundle must contain exactly two signed materials")
+              by_role = {}
+              for item in materials:
+                  if not isinstance(item, dict) or not isinstance(item.get("role"), str):
+                      raise SystemExit("invalid signed finalizer material descriptor")
+                  if item["role"] in by_role:
+                      raise SystemExit("duplicate signed finalizer material role")
+                  by_role[item["role"]] = item
+              if set(by_role) != {"trusted-finalizer-git-bindings", "trusted-finalizer-handoff"}:
+                  raise SystemExit("unexpected signed finalizer material roles")
+              record = manifest.get("record")
+              if not isinstance(record, dict) or record.get("path") != "record/verdict.json":
+                  raise SystemExit("unexpected signed finalizer record path")
+              comparisons = (
+                  (record["path"], verdict_path),
+                  (by_role["trusted-finalizer-handoff"].get("path"), handoff_path),
+                  (by_role["trusted-finalizer-git-bindings"].get("path"), bindings_path),
+              )
+              for member, external in comparisons:
+                  if member not in expected_members or archive.read(member) != external.read_bytes():
+                      raise SystemExit(f"signed finalizer member does not equal external proof: {member}")
+          PY
           printf 'bindings_sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/derived-finalizer-bindings.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           printf 'bundle_sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/finalizer-bundle/finalized.evb" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 

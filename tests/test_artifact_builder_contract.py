@@ -55,6 +55,7 @@ class ArtifactBuilderContractTests(unittest.TestCase):
         text = BUILDER.read_text(encoding="utf-8")
         for token in (
             "PR base must equal the current protected main head",
+            "reverify.head_sha !== pr.base.sha",
             "finalizer control does not bind this exact PR/base/head/run",
             "artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_control_artifact_id }}",
             "artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_id }}",
@@ -65,6 +66,8 @@ class ArtifactBuilderContractTests(unittest.TestCase):
             "--require-pass",
             "--expected-source",
             "--expected-context",
+            "signed finalizer member does not equal external proof",
+            '"trusted-finalizer-git-bindings", "trusted-finalizer-handoff"',
         ):
             self.assertIn(token, text)
         self.assertIn("MCowBQYDK2VwAyEA4JaVN8axu8ERZTzSXdoDe7uznDO0Tf/zltCQm6jr/5o=", text)
