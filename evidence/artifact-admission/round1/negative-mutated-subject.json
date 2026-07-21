@@ -1,0 +1,7 @@
+{
+  "error": "GitHub attestation receipt artifact does not match the external artifact bytes",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}

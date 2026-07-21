@@ -1,0 +1,7 @@
+{
+  "error": "GitHub attestation verifier output is not strict UTF-8 JSON: Extra data: line 1 column 16036 (char 16035)",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}

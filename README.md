@@ -53,7 +53,9 @@ workflow.
 The Phase B dispatcher is pinned to the exact Phase A merge commit. Its
 separate `workflow_run` admission path performs an unprivileged provider
 preflight before a protected Environment can materialize the distinct
-admission key. See the status document for the still-required live run; the
-presence of workflow files alone is not evidence of an admitted artifact.
+admission key. Artifact Admission Round 1 completed that live path for one
+exact source-only PR and retained the resulting public evidence. See
+[ARTIFACT_ADMISSION_ROUND1.md](ARTIFACT_ADMISSION_ROUND1.md); the result is
+bounded to the identities and claim limits recorded there.
 
 This repository is source-available under [LICENSE](LICENSE).

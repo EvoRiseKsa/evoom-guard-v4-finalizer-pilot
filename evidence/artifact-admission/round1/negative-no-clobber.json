@@ -1,0 +1,7 @@
+{
+  "error": "refusing to overwrite existing GitHub attestation raw output output: /home/runner/work/_temp/prekey-attestation.raw.json",
+  "format": "EVOGUARD_GITHUB_ATTESTATION_RECEIPT_V1",
+  "ok": false,
+  "status": "REJECTED",
+  "verified": false
+}

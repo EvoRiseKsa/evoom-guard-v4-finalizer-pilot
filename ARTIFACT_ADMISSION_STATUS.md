@@ -53,14 +53,16 @@ latest reviewed correction rather than `main`.
 - [x] Configure `evoguard-artifact-admission` with the distinct private key,
   required reviewer, self-review prevention, protected branches only, and no
   administrator bypass.
-- [ ] Open a new source-only PR, obtain a fresh finalizer `ALLOW`, build and
+- [x] Open a new source-only PR, obtain a fresh finalizer `ALLOW`, build and
   attest the exact regular file, seal one `.eab`, and verify it offline and
   through a fresh GitHub attestation query.
-- [ ] Run live negative controls and retain exact evidence.
+- [x] Run live negative controls and retain exact evidence.
 
-The workflows, variables, and protected Environment are enabled. Static tests
-and the recorded fail-closed probe are not positive live provider evidence;
-the live checkboxes remain open until one new PR completes the full sequence.
+Artifact Admission Round 1 completed on PR `#7`. The exact run IDs, commit
+identities, artifact digests, failures encountered before success, and retained
+evidence are recorded in
+[`ARTIFACT_ADMISSION_ROUND1.md`](ARTIFACT_ADMISSION_ROUND1.md) and
+[`evidence/artifact-admission/round1/OBSERVATION.json`](evidence/artifact-admission/round1/OBSERVATION.json).
 
 ## Claim boundary
 

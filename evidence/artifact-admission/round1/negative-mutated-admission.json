@@ -1,0 +1,7 @@
+{
+  "error": "cannot verify GitHub attestation admission: evidence bundle must end at one comment-free ZIP end record",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}
