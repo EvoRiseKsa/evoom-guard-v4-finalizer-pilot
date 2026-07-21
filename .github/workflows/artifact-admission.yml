@@ -584,7 +584,7 @@ jobs:
           import sys
           target = Path(sys.argv[1])
           target.write_text(
-              "#!/usr/bin/env bash\n"
+              "#!/bin/bash\n"
               "set -euo pipefail\n"
               "if (( $# < 3 )) || [[ \"$1\" != attestation || \"$2\" != verify ]]; then\n"
               "  echo 'refusing non-attestation provider invocation' >&2\n"
@@ -594,20 +594,26 @@ jobs:
               "  echo 'provider subject must be a regular, non-symlink file' >&2\n"
               "  exit 65\n"
               "fi\n"
-              "provider_root=\"$(mktemp -d /tmp/evoguard-gh.XXXXXXXXXX)\"\n"
-              "cleanup() { sudo rm -rf -- \"$provider_root\"; }\n"
+              "provider_root=\"$(/usr/bin/mktemp -d /tmp/evoguard-gh.XXXXXXXXXX)\"\n"
+              "cleanup() { /usr/bin/sudo /usr/bin/rm -rf -- \"$provider_root\"; }\n"
               "trap cleanup EXIT HUP INT TERM\n"
-              "chmod 0755 \"$provider_root\"\n"
-              "install -m 0444 -- \"$3\" \"$provider_root/subject\"\n"
-              "cmp --silent \"$3\" \"$provider_root/subject\"\n"
-              "install -d -m 0700 \"$provider_root/config\" \"$provider_root/cache\"\n"
-              "sudo chown -R evoguard-gh:evoguard-gh \"$provider_root/config\" \"$provider_root/cache\"\n"
+              "/usr/bin/chmod 0755 \"$provider_root\"\n"
+              "/usr/bin/install -m 0444 -- \"$3\" \"$provider_root/subject\"\n"
+              "/usr/bin/cmp --silent \"$3\" \"$provider_root/subject\"\n"
+              "/usr/bin/install -d -m 0700 \"$provider_root/config\" \"$provider_root/cache\" "
+              "\"$provider_root/home\" \"$provider_root/tmp\"\n"
+              "/usr/bin/sudo /usr/bin/chown -R evoguard-gh:evoguard-gh "
+              "\"$provider_root/config\" \"$provider_root/cache\" "
+              "\"$provider_root/home\" \"$provider_root/tmp\"\n"
               "args=(\"$@\")\n"
               "args[2]=\"$provider_root/subject\"\n"
+              "cd \"$provider_root\"\n"
               "set +e\n"
-              "sudo --preserve-env=GH_TOKEN,GITHUB_TOKEN,NO_COLOR,CLICOLOR -H -u evoguard-gh -- "
+              "/usr/bin/sudo --preserve-env=GH_TOKEN -H -u evoguard-gh -- "
               "/usr/bin/env GH_CONFIG_DIR=\"$provider_root/config\" "
               "XDG_CACHE_HOME=\"$provider_root/cache\" "
+              "HOME=\"$provider_root/home\" TMPDIR=\"$provider_root/tmp\" "
+              "NO_COLOR=1 GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 "
               "/opt/evoguard/provider/gh \"${args[@]}\"\n"
               "code=$?\n"
               "set -e\n"
@@ -781,7 +787,6 @@ jobs:
           SIGNER_WORKFLOW: ${{ steps.proof.outputs.signer_workflow }}
           SIGNER_DIGEST: ${{ steps.proof.outputs.signer_digest }}
           SUBJECT: ${{ steps.proof.outputs.subject }}
-          PINNED_GH: ${{ steps.proof.outputs.gh }}
           BUILD_RUN_ID: ${{ needs.preflight.outputs.build_run_id }}
           BUILD_RUN_ATTEMPT: ${{ needs.preflight.outputs.build_run_attempt }}
         run: |
@@ -804,7 +809,7 @@ jobs:
             "${policy[@]}" | tee "$RUNNER_TEMP/retained-verify-report.json"
           python -I "$RUNNER_TEMP/evo-guard.pyz" reverify-github-attestation-receipt \
             "$RUNNER_TEMP/github-attestation.receipt.json" "$SUBJECT" \
-            --gh-executable "$PINNED_GH" "${policy[@]}" \
+            --gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper" "${policy[@]}" \
             | tee "$RUNNER_TEMP/fresh-provider-reverify-report.json"
 
           originals=(
@@ -899,7 +904,8 @@ jobs:
             --signer-digest "$SIGNER_DIGEST" --source-ref "$SOURCE_REF" \
             --source-digest "$HEAD_SHA" \
             --cert-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            --gh-executable "$PINNED_GH" > "$RUNNER_TEMP/negative-no-clobber.json"
+            --gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper" \
+            > "$RUNNER_TEMP/negative-no-clobber.json"
           codes[no_clobber]=$?
           python - "$RUNNER_TEMP/prekey-attestation.raw.json" \
             > "$RUNNER_TEMP/negative-wrong-build-run.json" <<'PY'
