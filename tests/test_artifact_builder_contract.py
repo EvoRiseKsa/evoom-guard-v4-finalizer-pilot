@@ -43,11 +43,41 @@ class ArtifactBuilderContractTests(unittest.TestCase):
         text = BUILDER.read_text(encoding="utf-8")
         for path in ("calc/__init__.py", "calc/__main__.py", "calc/ops.py"):
             self.assertEqual(text.count(f'"{path}"'), 1)
-        self.assertIn('["git", "cat-file", "blob", object_id]', text)
+        self.assertIn('[*git, "cat-file", "blob", object_id]', text)
+        self.assertIn("git init --bare", text)
+        self.assertNotIn("actions/checkout@", text)
         self.assertIn('mode not in {"100644", "100755"}', text)
         self.assertIn("source object exceeds 256 KiB", text)
         self.assertNotIn("python -m calc", text)
         self.assertNotIn("pytest", text)
+
+    def test_builder_cryptographically_binds_finalizer_to_current_pr(self) -> None:
+        text = BUILDER.read_text(encoding="utf-8")
+        for token in (
+            "PR base must equal the current protected main head",
+            "finalizer control does not bind this exact PR/base/head/run",
+            "artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_control_artifact_id }}",
+            "artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_id }}",
+            "artifact-ids: ${{ steps.preflight.outputs.finalizer_bundle_artifact_id }}",
+            "derive-finalizer-bindings",
+            "verify-finalizer-bindings",
+            "verify-finalized",
+            "--require-pass",
+            "--expected-source",
+            "--expected-context",
+        ):
+            self.assertIn(token, text)
+        self.assertIn("MCowBQYDK2VwAyEA4JaVN8axu8ERZTzSXdoDe7uznDO0Tf/zltCQm6jr/5o=", text)
+
+    def test_builder_uses_reviewed_runtime_and_hash_locked_verifier(self) -> None:
+        text = BUILDER.read_text(encoding="utf-8")
+        self.assertIn("releases/download/v4.0.2/evo-guard.pyz", text)
+        self.assertGreaterEqual(
+            text.count("7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3"),
+            2,
+        )
+        self.assertIn("--require-hashes", text)
+        self.assertIn("cryptography==46.0.7", text)
 
     def test_control_binds_provider_build_and_finalizer_identifiers(self) -> None:
         text = BUILDER.read_text(encoding="utf-8")

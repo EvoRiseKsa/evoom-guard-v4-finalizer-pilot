@@ -8,13 +8,16 @@ it does **not** enable an artifact-admission decision by itself.
 
 - [x] A reusable workflow accepts only an open same-repository PR at its exact
   current branch/SHA.
-- [x] It validates exact successful Reverify and dependent Seal runs and their
-  GitHub artifact IDs/digests.
-- [x] It reads three fixed Git blobs with `git cat-file`, creates one bounded
-  canonical regular file, and never imports or executes candidate code.
+- [x] It requires the PR base to equal current protected `main`, downloads the
+  exact Reverify control/evidence and Seal bundle artifact IDs, re-derives the
+  raw-Git bindings, and cryptographically verifies a signed finalizer `ALLOW`
+  for the same repository/PR/base/head/run/attempt.
+- [x] It reads three fixed blobs from a bare Git object store with
+  `git cat-file`, creates one bounded canonical regular file, and never checks
+  out, imports, or executes candidate code.
 - [x] It generates one GitHub provenance attestation with a full-SHA-pinned
   `actions/attest` action.
-- [x] It emits separate subject and control artifacts binding run/attempt,
+- [x] It emits separate subject and audit-control artifacts binding run/attempt,
   source, finalizer, artifact ID/API digest/file digest, and attestation ID.
 - [x] A separate artifact-admission public key exists. Its key ID is
   `sha256:cd9db360e786c0f4c5d31881a5953152bb773a86ee9d3716721dbf01658b357b`.

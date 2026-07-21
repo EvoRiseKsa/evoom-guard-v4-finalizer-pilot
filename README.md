@@ -44,8 +44,10 @@ The completed Round 1 sequence and machine-readable retained evidence are in
 
 The separately keyed Artifact Admission pilot is staged in bounded phases;
 see [ARTIFACT_ADMISSION_STATUS.md](ARTIFACT_ADMISSION_STATUS.md). Its trusted
-builder creates and attests a canonical regular file without executing
-candidate code. No artifact-admission decision is enabled merely by installing
-that reusable workflow.
+builder first verifies that a signed finalizer `ALLOW` belongs to the exact
+current PR/base/head, then creates and attests a canonical regular file from a
+bare Git object store without checking out or executing candidate code. No
+artifact-admission decision is enabled merely by installing that reusable
+workflow.
 
 This repository is source-available under [LICENSE](LICENSE).
