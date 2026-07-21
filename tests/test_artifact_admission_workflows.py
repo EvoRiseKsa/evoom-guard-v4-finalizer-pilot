@@ -126,7 +126,7 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
         text = ADMISSION.read_text(encoding="utf-8")
         block = text[
             text.index("- name: Bind the provider certificate") :
-            text.index("- name: Prepare a lower-privilege provider process wrapper")
+            text.index("- name: Materialize the distinct admission key")
         ]
         for token in (
             "BUILD_RUN_ID: ${{ needs.preflight.outputs.build_run_id }}",
@@ -137,18 +137,40 @@ class ArtifactAdmissionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(token, block)
 
-    def test_lower_privilege_provider_has_an_explicit_config_directory(self) -> None:
+    def test_lower_privilege_provider_has_an_isolated_runtime_and_config(self) -> None:
         text = ADMISSION.read_text(encoding="utf-8")
         wrapper = text[
             text.index("- name: Prepare a lower-privilege provider process wrapper") :
             text.index("- name: Materialize the distinct admission key")
         ]
-        self.assertIn('GH_CONFIG_DIR=%s\\n', wrapper)
-        self.assertIn('XDG_CACHE_HOME=%s\\n', wrapper)
-        self.assertIn('${GH_CONFIG_DIR:?GH_CONFIG_DIR must be set}', wrapper)
-        self.assertIn('${XDG_CACHE_HOME:?XDG_CACHE_HOME must be set}', wrapper)
-        self.assertIn('GH_CONFIG_DIR,XDG_CACHE_HOME', wrapper)
+        for token in (
+            "sudo install -d -o root -g root -m 0755 /opt/evoguard/provider",
+            "sudo install -o root -g root -m 0755",
+            "cmp --silent \"$PINNED_GH\" /opt/evoguard/provider/gh",
+            "root:root:755",
+            "mktemp -d /tmp/evoguard-gh.XXXXXXXXXX",
+            "install -m 0444",
+            "provider subject must be a regular, non-symlink file",
+            "args[2]=",
+            "GH_CONFIG_DIR=",
+            "XDG_CACHE_HOME=",
+            "/opt/evoguard/provider/gh",
+            "trap cleanup EXIT HUP INT TERM",
+        ):
+            self.assertIn(token, wrapper)
         self.assertIn("-u evoguard-gh", wrapper)
+        self.assertNotIn('>> "$GITHUB_ENV"', wrapper)
+        self.assertNotIn('chmod 0755 "$PWD"', wrapper)
+        self.assertLess(
+            wrapper.index("Prepare a lower-privilege provider process wrapper"),
+            wrapper.index("Make a fresh provider check before any admission key is materialized"),
+        )
+        prekey = wrapper[
+            wrapper.index("Make a fresh provider check before any admission key is materialized") :
+            wrapper.index("Bind the provider certificate")
+        ]
+        self.assertIn('--gh-executable "$RUNNER_TEMP/evoguard-gh-wrapper"', prekey)
+        self.assertNotIn('--gh-executable "$PINNED_GH"', prekey)
 
     def test_public_checksum_manifest_covers_pinned_tool_hashes(self) -> None:
         text = ADMISSION.read_text(encoding="utf-8")
