@@ -16,6 +16,8 @@ Never add credentials, customer code, private incidents, or production data.
   `7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3`
 - `EVOGUARD_PACK_V2` verifier-pack SHA-256:
   `aa97da0bdff54432f0371e531c6d71a955a0de732a81bbf006bec60bf348ebf4`
+- pilot finalizer public-key ID:
+  `sha256:e5ca8d43c4816900ed42b81b52cbd65a6c42105b1bdfaa00a6c100462d70faf0`
 
 The repository variable `EVOGUARD_GUARD_ARTIFACT_SHA256` must contain that
 exact digest. The workflow downloads the immutable release asset and verifies
