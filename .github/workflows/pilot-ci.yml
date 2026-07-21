@@ -37,8 +37,28 @@ jobs:
           PY
       - name: Public fixture and workflow-contract tests
         run: python -m unittest discover -s tests -v
+      - name: Install hash-locked Ed25519 verification dependency
+        run: |
+          python - "$RUNNER_TEMP/finalizer-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          Path(sys.argv[1]).write_text(
+              """cryptography==46.0.7 \
+              --hash=sha256:420b1e4109cc95f0e5700eed79908cef9268265c773d3a66f7af1eef53d409ef
+          cffi==2.1.0 \
+              --hash=sha256:1e9f50d192a3e525b15a75ab5114e442d83d657b7ec29182a991bc9a88fd3a66
+          pycparser==3.0 \
+              --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+          """,
+              encoding="utf-8",
+          )
+          PY
+          python -m pip install --disable-pip-version-check --only-binary=:all: \
+            --require-hashes -r "$RUNNER_TEMP/finalizer-requirements.txt"
       - name: Verify retained Round 1 final bundle
         run: |
+          set -euo pipefail
           python - <<'PY'
           import base64
           import pathlib
@@ -52,7 +72,7 @@ jobs:
             --trusted-pub security/finalizer-public.pem \
             --expected-source evidence/round1/final-allow-expected-source.json \
             --expected-context evidence/round1/final-allow-expected-context.json \
-            --require-pass > "$RUNNER_TEMP/round1-verification.json"
+            --require-pass | tee "$RUNNER_TEMP/round1-verification.json"
           python - "$RUNNER_TEMP/round1-verification.json" <<'PY'
           import json
           import pathlib

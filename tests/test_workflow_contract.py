@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).parents[1]
 REVERIFY = ROOT / ".github" / "workflows" / "evoguard-reverify.yml"
 SEAL = ROOT / ".github" / "workflows" / "evoguard-seal.yml"
+PILOT_CI = ROOT / ".github" / "workflows" / "pilot-ci.yml"
 RUNTIME_URL = (
     "https://github.com/EvoRiseKsa/EvoOM-Guard-m/"
     "releases/download/v4.0.2/evo-guard.pyz"
@@ -46,10 +47,36 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("actions/checkout", text)
 
     def test_all_github_actions_are_full_sha_pinned(self) -> None:
-        combined = REVERIFY.read_text(encoding="utf-8") + SEAL.read_text(encoding="utf-8")
+        combined = (
+            REVERIFY.read_text(encoding="utf-8")
+            + SEAL.read_text(encoding="utf-8")
+            + PILOT_CI.read_text(encoding="utf-8")
+        )
         refs = re.findall(r"uses:\s*actions/[A-Za-z0-9_.-]+@([^\s#]+)", combined)
         self.assertTrue(refs)
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs))
+
+    def test_retained_signature_verification_dependencies_are_hash_locked(self) -> None:
+        text = PILOT_CI.read_text(encoding="utf-8")
+        for requirement, digest in (
+            (
+                "cryptography==46.0.7",
+                "420b1e4109cc95f0e5700eed79908cef9268265c773d3a66f7af1eef53d409ef",
+            ),
+            (
+                "cffi==2.1.0",
+                "1e9f50d192a3e525b15a75ab5114e442d83d657b7ec29182a991bc9a88fd3a66",
+            ),
+            (
+                "pycparser==3.0",
+                "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992",
+            ),
+        ):
+            self.assertEqual(text.count(requirement), 1)
+            self.assertEqual(text.count(f"--hash=sha256:{digest}"), 1)
+        self.assertIn("--only-binary=:all:", text)
+        self.assertIn("--require-hashes", text)
+        self.assertIn("set -euo pipefail", text)
 
 
 if __name__ == "__main__":
