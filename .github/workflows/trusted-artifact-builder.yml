@@ -1,0 +1,640 @@
+name: EvoGuard Trusted Artifact Builder
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: Same-repository source-only pull request
+        required: true
+        type: string
+      finalizer_reverify_run_id:
+        description: Successful EvoGuard Reverify run for this exact PR head
+        required: true
+        type: string
+      finalizer_seal_run_id:
+        description: Successful dependent EvoGuard Seal run
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  build-attest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+      pull-requests: read
+    steps:
+      - id: preflight
+        name: Bind the caller to one open PR and one finalized attempt
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          FINALIZER_REVERIFY_RUN_ID: ${{ inputs.finalizer_reverify_run_id }}
+          FINALIZER_SEAL_RUN_ID: ${{ inputs.finalizer_seal_run_id }}
+          EXPECTED_REVERIFY_WORKFLOW_ID: ${{ vars.EVOGUARD_REVERIFY_WORKFLOW_ID }}
+          EXPECTED_SEAL_WORKFLOW_ID: ${{ vars.EVOGUARD_SEAL_WORKFLOW_ID }}
+        with:
+          script: |
+            const decimal = /^[1-9][0-9]*$/;
+            for (const [name, value] of Object.entries({
+              PR_NUMBER: process.env.PR_NUMBER,
+              FINALIZER_REVERIFY_RUN_ID: process.env.FINALIZER_REVERIFY_RUN_ID,
+              FINALIZER_SEAL_RUN_ID: process.env.FINALIZER_SEAL_RUN_ID,
+              EXPECTED_REVERIFY_WORKFLOW_ID: process.env.EXPECTED_REVERIFY_WORKFLOW_ID,
+              EXPECTED_SEAL_WORKFLOW_ID: process.env.EXPECTED_SEAL_WORKFLOW_ID,
+            })) {
+              if (!decimal.test(value || '')) throw new Error(`${name} must be a positive decimal integer`);
+            }
+
+            const { owner, repo } = context.repo;
+            const fullName = `${owner}/${repo}`;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const pr = (await github.rest.pulls.get({ owner, repo, pull_number: prNumber })).data;
+            const defaultBranch = context.payload.repository.default_branch;
+            if (defaultBranch !== 'main' || pr.state !== 'open' || pr.base.ref !== defaultBranch ||
+                pr.head.repo?.full_name !== fullName || pr.base.repo?.full_name !== fullName) {
+              throw new Error('builder accepts only an open same-repository PR targeting main');
+            }
+            const main = (await github.rest.repos.getBranch({ owner, repo, branch: defaultBranch })).data;
+            if (main.commit.sha !== pr.base.sha) {
+              throw new Error('PR base must equal the current protected main head');
+            }
+            if (context.eventName !== 'workflow_dispatch' || context.sha !== pr.head.sha ||
+                context.ref !== `refs/heads/${pr.head.ref}`) {
+              throw new Error('dispatch ref/SHA must be the exact current PR head');
+            }
+
+            const [baseCommit, headCommit] = await Promise.all([
+              github.rest.git.getCommit({ owner, repo, commit_sha: pr.base.sha }),
+              github.rest.git.getCommit({ owner, repo, commit_sha: pr.head.sha }),
+            ]);
+
+            const reverifyRunId = Number(process.env.FINALIZER_REVERIFY_RUN_ID);
+            const sealRunId = Number(process.env.FINALIZER_SEAL_RUN_ID);
+            const reverify = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: reverifyRunId })).data;
+            const seal = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: sealRunId })).data;
+            if (String(reverify.workflow_id) !== process.env.EXPECTED_REVERIFY_WORKFLOW_ID ||
+                reverify.event !== 'workflow_dispatch' || reverify.conclusion !== 'success' ||
+                reverify.head_branch !== 'main' || reverify.head_sha !== pr.base.sha ||
+                reverify.head_repository?.full_name !== fullName) {
+              throw new Error('finalizer reverify run is not the configured successful protected-main workflow');
+            }
+            if (String(seal.workflow_id) !== process.env.EXPECTED_SEAL_WORKFLOW_ID ||
+                seal.event !== 'workflow_run' || seal.conclusion !== 'success' ||
+                seal.head_branch !== 'main' || seal.head_repository?.full_name !== fullName ||
+                seal.head_sha !== reverify.head_sha || Date.parse(seal.created_at) < Date.parse(reverify.updated_at)) {
+              throw new Error('seal run is not a successful dependent protected-main finalizer run');
+            }
+
+            async function liveArtifacts(runId) {
+              const response = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: runId, per_page: 100,
+              });
+              return response.data.artifacts.filter((artifact) => !artifact.expired);
+            }
+            function exactlyOne(artifacts, name) {
+              const matches = artifacts.filter((artifact) => artifact.name === name);
+              if (matches.length !== 1) throw new Error(`expected exactly one live artifact named ${name}`);
+              const artifact = matches[0];
+              if (!/^sha256:[0-9a-f]{64}$/.test(artifact.digest || '')) {
+                throw new Error(`artifact ${name} lacks a canonical API digest`);
+              }
+              return artifact;
+            }
+
+            const reverifyArtifacts = await liveArtifacts(reverifyRunId);
+            const attempt = String(reverify.run_attempt);
+            const reverifyControl = exactlyOne(
+              reverifyArtifacts, `evoguard-reverify-control-v1-${attempt}`,
+            );
+            const reverifyEvidence = exactlyOne(
+              reverifyArtifacts, `evoguard-reverify-evidence-v1-${attempt}`,
+            );
+            if (reverifyArtifacts.length !== 2) throw new Error('unexpected artifact in finalizer reverify run');
+
+            const sealArtifacts = await liveArtifacts(sealRunId);
+            const finalized = exactlyOne(
+              sealArtifacts, `evoguard-finalized-evidence-${reverifyRunId}`,
+            );
+            if (sealArtifacts.length !== 1) throw new Error('unexpected artifact in finalizer seal run');
+
+            const outputs = {
+              repository_id: String(context.payload.repository.id),
+              pr_number: String(prNumber),
+              base_sha: pr.base.sha,
+              head_sha: pr.head.sha,
+              base_tree_sha: baseCommit.data.tree.sha,
+              head_tree_sha: headCommit.data.tree.sha,
+              source_ref: `refs/heads/${pr.head.ref}`,
+              finalizer_reverify_run_id: String(reverifyRunId),
+              finalizer_reverify_run_attempt: attempt,
+              finalizer_reverify_control_artifact_id: String(reverifyControl.id),
+              finalizer_reverify_control_artifact_digest: reverifyControl.digest,
+              finalizer_reverify_evidence_artifact_id: String(reverifyEvidence.id),
+              finalizer_reverify_evidence_artifact_digest: reverifyEvidence.digest,
+              finalizer_seal_run_id: String(sealRunId),
+              finalizer_seal_run_attempt: String(seal.run_attempt),
+              finalizer_seal_workflow_id: String(seal.workflow_id),
+              finalizer_seal_head_sha: seal.head_sha,
+              finalizer_bundle_artifact_id: String(finalized.id),
+              finalizer_bundle_artifact_digest: finalized.digest,
+            };
+            for (const [name, value] of Object.entries(outputs)) core.setOutput(name, value);
+
+      - name: Set up the finalizer verification runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the hash-locked Ed25519 verifier dependency
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/finalizer-verify-requirements.txt" <<'PY'
+          from pathlib import Path
+          import sys
+
+          Path(sys.argv[1]).write_text(
+              """cryptography==46.0.7 \\
+              --hash=sha256:420b1e4109cc95f0e5700eed79908cef9268265c773d3a66f7af1eef53d409ef
+          cffi==2.1.0 \\
+              --hash=sha256:1e9f50d192a3e525b15a75ab5114e442d83d657b7ec29182a991bc9a88fd3a66
+          pycparser==3.0 \\
+              --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+          """,
+              encoding="utf-8",
+          )
+          PY
+          python -m pip install --disable-pip-version-check --only-binary=:all: \
+            --require-hashes -r "$RUNNER_TEMP/finalizer-verify-requirements.txt"
+
+      - name: Download the exact immutable finalizer control artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_control_artifact_id }}
+          path: ${{ runner.temp }}/reverify-control
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download the exact re-verification evidence artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_id }}
+          path: ${{ runner.temp }}/reverify-evidence
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download the exact signed finalizer bundle artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.preflight.outputs.finalizer_bundle_artifact_id }}
+          path: ${{ runner.temp }}/finalizer-bundle
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download and verify the reviewed Guard v4.0.2 runtime
+        env:
+          GUARD_ARTIFACT_SHA256: ${{ vars.EVOGUARD_GUARD_ARTIFACT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test "$GUARD_ARTIFACT_SHA256" = "7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3"
+          printf '%s  %s\n' "$GUARD_ARTIFACT_SHA256" "$RUNNER_TEMP/evo-guard.pyz" > "$RUNNER_TEMP/guard.sha256"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/evo-guard.pyz" \
+            "https://github.com/EvoRiseKsa/EvoOM-Guard-m/releases/download/v4.0.2/evo-guard.pyz"
+          sha256sum --check "$RUNNER_TEMP/guard.sha256"
+          chmod 0755 "$RUNNER_TEMP/evo-guard.pyz"
+
+      - id: finalizer
+        name: Prove the signed finalizer ALLOW belongs to this exact PR base and head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY_ID: ${{ steps.preflight.outputs.repository_id }}
+          PR_NUMBER: ${{ steps.preflight.outputs.pr_number }}
+          BASE_SHA: ${{ steps.preflight.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
+          BASE_TREE_SHA: ${{ steps.preflight.outputs.base_tree_sha }}
+          HEAD_TREE_SHA: ${{ steps.preflight.outputs.head_tree_sha }}
+          FINALIZER_REVERIFY_RUN_ID: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}
+          FINALIZER_REVERIFY_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_reverify_run_attempt }}
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/reverify-control/finalizer-control.json" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import stat
+          import sys
+
+          target = Path(sys.argv[1])
+          metadata = target.lstat()
+          if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= 16 * 1024:
+              raise SystemExit("finalizer control must be a bounded regular file")
+          control = json.loads(target.read_text(encoding="utf-8"))
+          keys = {
+              "base_sha", "base_tree_sha", "check_run_id", "format", "head_sha",
+              "head_tree_sha", "pull_request_number", "repository", "repository_id",
+              "workflow_run_attempt", "workflow_run_id",
+          }
+          if set(control) != keys or control.get("format") != "EVOGUARD_REVERIFY_CONTROL_V1":
+              raise SystemExit("unexpected finalizer control schema")
+          expected = {
+              "base_sha": os.environ["BASE_SHA"],
+              "base_tree_sha": os.environ["BASE_TREE_SHA"],
+              "head_sha": os.environ["HEAD_SHA"],
+              "head_tree_sha": os.environ["HEAD_TREE_SHA"],
+              "pull_request_number": int(os.environ["PR_NUMBER"]),
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "repository_id": os.environ["REPOSITORY_ID"],
+              "workflow_run_attempt": int(os.environ["FINALIZER_REVERIFY_RUN_ATTEMPT"]),
+              "workflow_run_id": os.environ["FINALIZER_REVERIFY_RUN_ID"],
+          }
+          if any(control.get(key) != value for key, value in expected.items()):
+              raise SystemExit("finalizer control does not bind this exact PR/base/head/run")
+          if not isinstance(control.get("check_run_id"), int) or control["check_run_id"] < 1:
+              raise SystemExit("finalizer control has an invalid check_run_id")
+          for field in ("base_sha", "base_tree_sha", "head_sha", "head_tree_sha"):
+              if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", control[field]) is None:
+                  raise SystemExit(f"invalid finalizer {field}")
+
+          expected_files = {
+              Path(os.environ["RUNNER_TEMP"]) / "reverify-evidence" / "verdict.json": 16 * 1024 * 1024,
+              Path(os.environ["RUNNER_TEMP"]) / "reverify-evidence" / "handoff.json": 16 * 1024 * 1024,
+              Path(os.environ["RUNNER_TEMP"]) / "finalizer-bundle" / "finalized.evb": 32 * 1024 * 1024,
+          }
+          for path, limit in expected_files.items():
+              info = path.lstat()
+              if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= limit:
+                  raise SystemExit(f"refuse missing, non-regular, or oversized finalizer file: {path.name}")
+          PY
+
+          objects="$RUNNER_TEMP/evoguard-artifact-objects.git"
+          git init --bare --quiet "$objects"
+          git -C "$objects" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          trap 'git -C "$objects" config --unset-all http.https://github.com/.extraheader || true' EXIT
+          git -C "$objects" config http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+          git -C "$objects" fetch --quiet --no-tags --filter=blob:none origin "$BASE_SHA" "$HEAD_SHA"
+
+          python - "$RUNNER_TEMP/finalizer-public.pem" <<'PY'
+          from pathlib import Path
+          import sys
+          Path(sys.argv[1]).write_text(
+              "-----BEGIN PUBLIC KEY-----\n"
+              "MCowBQYDK2VwAyEA4JaVN8axu8ERZTzSXdoDe7uznDO0Tf/zltCQm6jr/5o=\n"
+              "-----END PUBLIC KEY-----\n",
+              encoding="ascii",
+          )
+          PY
+          python -I "$RUNNER_TEMP/evo-guard.pyz" derive-finalizer-bindings \
+            --base-repo "$objects" --head-repo "$objects" --base-bare --head-bare \
+            --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA" \
+            --base-tree-sha "$BASE_TREE_SHA" --head-tree-sha "$HEAD_TREE_SHA" \
+            --repository "$GITHUB_REPOSITORY" --repository-id "$REPOSITORY_ID" \
+            --pr-number "$PR_NUMBER" --run-id "$FINALIZER_REVERIFY_RUN_ID" \
+            --run-attempt "$FINALIZER_REVERIFY_RUN_ATTEMPT" \
+            --guard-artifact-sha "7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3" \
+            --out "$RUNNER_TEMP/derived-finalizer-bindings.json"
+          python -I "$RUNNER_TEMP/evo-guard.pyz" verify-finalizer-bindings \
+            "$RUNNER_TEMP/reverify-evidence/verdict.json" \
+            --bindings "$RUNNER_TEMP/derived-finalizer-bindings.json" \
+            --source-out "$RUNNER_TEMP/expected-finalizer-source.json" \
+            --context-out "$RUNNER_TEMP/expected-finalizer-context.json"
+          python -I "$RUNNER_TEMP/evo-guard.pyz" verify-finalized \
+            "$RUNNER_TEMP/finalizer-bundle/finalized.evb" \
+            --trusted-pub "$RUNNER_TEMP/finalizer-public.pem" \
+            --expected-source "$RUNNER_TEMP/expected-finalizer-source.json" \
+            --expected-context "$RUNNER_TEMP/expected-finalizer-context.json" \
+            --require-pass
+          python - \
+            "$RUNNER_TEMP/finalizer-bundle/finalized.evb" \
+            "$RUNNER_TEMP/reverify-evidence/verdict.json" \
+            "$RUNNER_TEMP/reverify-evidence/handoff.json" \
+            "$RUNNER_TEMP/derived-finalizer-bindings.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          import zipfile
+
+          bundle_path, verdict_path, handoff_path, bindings_path = map(Path, sys.argv[1:])
+          expected_members = {
+              "bundle.json",
+              "bundle.sig",
+              "record/verdict.json",
+              "materials/000-trusted-finalizer-git-bindings",
+              "materials/001-trusted-finalizer-handoff",
+          }
+          with zipfile.ZipFile(bundle_path) as archive:
+              infos = archive.infolist()
+              names = [info.filename for info in infos]
+              if len(names) != len(set(names)) or set(names) != expected_members:
+                  raise SystemExit("finalizer bundle has an unexpected or duplicate member")
+              if any(info.file_size < 1 or info.file_size > 32 * 1024 * 1024 for info in infos):
+                  raise SystemExit("finalizer bundle member violates size bounds")
+              manifest = json.loads(archive.read("bundle.json"))
+              materials = manifest.get("materials")
+              if not isinstance(materials, list) or len(materials) != 2:
+                  raise SystemExit("finalizer bundle must contain exactly two signed materials")
+              by_role = {}
+              for item in materials:
+                  if not isinstance(item, dict) or not isinstance(item.get("role"), str):
+                      raise SystemExit("invalid signed finalizer material descriptor")
+                  if item["role"] in by_role:
+                      raise SystemExit("duplicate signed finalizer material role")
+                  by_role[item["role"]] = item
+              if set(by_role) != {"trusted-finalizer-git-bindings", "trusted-finalizer-handoff"}:
+                  raise SystemExit("unexpected signed finalizer material roles")
+              record = manifest.get("record")
+              if not isinstance(record, dict) or record.get("path") != "record/verdict.json":
+                  raise SystemExit("unexpected signed finalizer record path")
+              comparisons = (
+                  (record["path"], verdict_path),
+                  (by_role["trusted-finalizer-handoff"].get("path"), handoff_path),
+                  (by_role["trusted-finalizer-git-bindings"].get("path"), bindings_path),
+              )
+              for member, external in comparisons:
+                  if member not in expected_members or archive.read(member) != external.read_bytes():
+                      raise SystemExit(f"signed finalizer member does not equal external proof: {member}")
+          PY
+          printf 'bindings_sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/derived-finalizer-bindings.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          printf 'bundle_sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/finalizer-bundle/finalized.evb" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - id: subject
+        name: Build a canonical bounded source artifact without executing candidate code
+        env:
+          REPOSITORY_ID: ${{ steps.preflight.outputs.repository_id }}
+          PR_NUMBER: ${{ steps.preflight.outputs.pr_number }}
+          BASE_SHA: ${{ steps.preflight.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
+          SOURCE_REF: ${{ steps.preflight.outputs.source_ref }}
+          FINALIZER_REVERIFY_RUN_ID: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}
+          FINALIZER_REVERIFY_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_reverify_run_attempt }}
+          FINALIZER_SEAL_RUN_ID: ${{ steps.preflight.outputs.finalizer_seal_run_id }}
+          FINALIZER_SEAL_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_seal_run_attempt }}
+          FINALIZER_SEAL_WORKFLOW_ID: ${{ steps.preflight.outputs.finalizer_seal_workflow_id }}
+          FINALIZER_SEAL_HEAD_SHA: ${{ steps.preflight.outputs.finalizer_seal_head_sha }}
+          OBJECT_STORE: ${{ runner.temp }}/evoguard-artifact-objects.git
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/calc-source-artifact.json"
+          python - "$output" <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+
+          paths = ("calc/__init__.py", "calc/__main__.py", "calc/ops.py")
+          head = os.environ["HEAD_SHA"]
+          files = []
+          total = 0
+          for path in paths:
+              git = ["git", "-C", os.environ["OBJECT_STORE"]]
+              result = subprocess.run(
+                  [*git, "ls-tree", "-z", head, "--", path],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              ).stdout
+              entries = [entry for entry in result.split(b"\0") if entry]
+              if len(entries) != 1:
+                  raise SystemExit(f"expected one Git entry for {path}")
+              header, observed_path = entries[0].split(b"\t", 1)
+              mode, kind, object_id = header.decode("ascii").split(" ")
+              if observed_path.decode("utf-8") != path or kind != "blob" or mode not in {"100644", "100755"}:
+                  raise SystemExit(f"refuse non-regular source object for {path}")
+              size = int(subprocess.run(
+                  [*git, "cat-file", "-s", object_id],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+              ).stdout.strip())
+              if size > 256 * 1024:
+                  raise SystemExit(f"source object exceeds 256 KiB: {path}")
+              raw = subprocess.run(
+                  [*git, "cat-file", "blob", object_id],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              ).stdout
+              if len(raw) != size:
+                  raise SystemExit(f"Git object size changed while reading {path}")
+              total += size
+              files.append({
+                  "content_base64": base64.b64encode(raw).decode("ascii"),
+                  "git_mode": mode,
+                  "git_object_id": object_id,
+                  "path": path,
+                  "sha256": hashlib.sha256(raw).hexdigest(),
+                  "size": size,
+              })
+          if total > 512 * 1024:
+              raise SystemExit("source artifact input exceeds 512 KiB")
+          document = {
+              "files": files,
+              "format": "EVOGUARD_ARTIFACT_ADMISSION_PILOT_SUBJECT_V1",
+              "finalizer": {
+                  "reverify_run_id": os.environ["FINALIZER_REVERIFY_RUN_ID"],
+                  "reverify_run_attempt": int(os.environ["FINALIZER_REVERIFY_RUN_ATTEMPT"]),
+                  "seal_run_id": os.environ["FINALIZER_SEAL_RUN_ID"],
+                  "seal_run_attempt": int(os.environ["FINALIZER_SEAL_RUN_ATTEMPT"]),
+                  "seal_workflow_id": os.environ["FINALIZER_SEAL_WORKFLOW_ID"],
+                  "seal_head_sha": os.environ["FINALIZER_SEAL_HEAD_SHA"],
+              },
+              "source": {
+                  "base_sha": os.environ["BASE_SHA"],
+                  "head_sha": head,
+                  "pull_request_number": int(os.environ["PR_NUMBER"]),
+                  "repository": os.environ["GITHUB_REPOSITORY"],
+                  "repository_id": os.environ["REPOSITORY_ID"],
+                  "source_ref": os.environ["SOURCE_REF"],
+              },
+          }
+          encoded = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+          with open(sys.argv[1], "xb") as target:
+              target.write(encoded)
+          PY
+          sha256sum "$output"
+          printf 'path=%s\n' "$output" >> "$GITHUB_OUTPUT"
+          printf 'sha256=%s\n' "$(sha256sum "$output" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          printf 'size=%s\n' "$(stat -c %s "$output")" >> "$GITHUB_OUTPUT"
+
+      - id: attest
+        name: Generate GitHub provenance for the exact regular file
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: ${{ steps.subject.outputs.path }}
+
+      - id: upload_subject
+        name: Upload the exact attested regular file
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evoguard-artifact-subject-v1-${{ github.run_attempt }}
+          path: ${{ steps.subject.outputs.path }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          retention-days: 30
+
+      - name: Emit the immutable build/run/artifact control record
+        env:
+          REPOSITORY_ID: ${{ steps.preflight.outputs.repository_id }}
+          PR_NUMBER: ${{ steps.preflight.outputs.pr_number }}
+          BASE_SHA: ${{ steps.preflight.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.preflight.outputs.head_sha }}
+          SOURCE_REF: ${{ steps.preflight.outputs.source_ref }}
+          SUBJECT_SHA256: ${{ steps.subject.outputs.sha256 }}
+          SUBJECT_SIZE: ${{ steps.subject.outputs.size }}
+          SUBJECT_ARTIFACT_ID: ${{ steps.upload_subject.outputs.artifact-id }}
+          SUBJECT_ARTIFACT_DIGEST: ${{ steps.upload_subject.outputs.artifact-digest }}
+          SUBJECT_ARTIFACT_URL: ${{ steps.upload_subject.outputs.artifact-url }}
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          FINALIZER_REVERIFY_RUN_ID: ${{ steps.preflight.outputs.finalizer_reverify_run_id }}
+          FINALIZER_REVERIFY_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_reverify_run_attempt }}
+          FINALIZER_REVERIFY_CONTROL_ARTIFACT_ID: ${{ steps.preflight.outputs.finalizer_reverify_control_artifact_id }}
+          FINALIZER_REVERIFY_CONTROL_ARTIFACT_DIGEST: ${{ steps.preflight.outputs.finalizer_reverify_control_artifact_digest }}
+          FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_ID: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_id }}
+          FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_DIGEST: ${{ steps.preflight.outputs.finalizer_reverify_evidence_artifact_digest }}
+          FINALIZER_SEAL_RUN_ID: ${{ steps.preflight.outputs.finalizer_seal_run_id }}
+          FINALIZER_SEAL_RUN_ATTEMPT: ${{ steps.preflight.outputs.finalizer_seal_run_attempt }}
+          FINALIZER_SEAL_WORKFLOW_ID: ${{ steps.preflight.outputs.finalizer_seal_workflow_id }}
+          FINALIZER_SEAL_HEAD_SHA: ${{ steps.preflight.outputs.finalizer_seal_head_sha }}
+          FINALIZER_BUNDLE_ARTIFACT_ID: ${{ steps.preflight.outputs.finalizer_bundle_artifact_id }}
+          FINALIZER_BUNDLE_ARTIFACT_DIGEST: ${{ steps.preflight.outputs.finalizer_bundle_artifact_digest }}
+          FINALIZER_BINDINGS_SHA256: ${{ steps.finalizer.outputs.bindings_sha256 }}
+          FINALIZER_BUNDLE_SHA256: ${{ steps.finalizer.outputs.bundle_sha256 }}
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/artifact-build-control.json" "$RUNNER_TEMP/github-attestation.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          from urllib.parse import urlparse
+
+          control_path, retained_attestation_path = sys.argv[1:]
+          bundle_path = os.path.abspath(os.environ["ATTESTATION_BUNDLE"])
+          descriptor = os.open(bundle_path, os.O_RDONLY | os.O_NOFOLLOW)
+          try:
+              metadata = os.fstat(descriptor)
+              if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= 16 * 1024 * 1024:
+                  raise SystemExit("refuse missing, non-regular, or oversized attestation bundle")
+              with os.fdopen(descriptor, "rb", closefd=False) as source:
+                  attestation = source.read()
+          finally:
+              os.close(descriptor)
+          if len(attestation) != metadata.st_size:
+              raise SystemExit("attestation bundle changed while reading")
+          with open(retained_attestation_path, "xb") as target:
+              target.write(attestation)
+
+          values = os.environ
+          for name in (
+              "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "SUBJECT_ARTIFACT_ID",
+              "FINALIZER_REVERIFY_RUN_ID", "FINALIZER_REVERIFY_RUN_ATTEMPT",
+              "FINALIZER_REVERIFY_CONTROL_ARTIFACT_ID",
+              "FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_ID", "FINALIZER_SEAL_RUN_ID",
+              "FINALIZER_SEAL_RUN_ATTEMPT", "FINALIZER_SEAL_WORKFLOW_ID",
+              "FINALIZER_BUNDLE_ARTIFACT_ID",
+          ):
+              if re.fullmatch(r"[1-9][0-9]*", values[name]) is None:
+                  raise SystemExit(f"invalid positive decimal action output: {name}")
+          for name in (
+              "SUBJECT_SHA256", "FINALIZER_BINDINGS_SHA256", "FINALIZER_BUNDLE_SHA256",
+          ):
+              if re.fullmatch(r"[0-9a-f]{64}", values[name]) is None:
+                  raise SystemExit(f"invalid SHA-256 action output: {name}")
+          for name in (
+              "SUBJECT_ARTIFACT_DIGEST", "FINALIZER_BUNDLE_ARTIFACT_DIGEST",
+              "FINALIZER_REVERIFY_CONTROL_ARTIFACT_DIGEST",
+              "FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_DIGEST",
+          ):
+              if re.fullmatch(r"sha256:[0-9a-f]{64}", values[name]) is None:
+                  raise SystemExit(f"invalid GitHub artifact API digest: {name}")
+          if re.fullmatch(r"[0-9a-f]{40}", values["FINALIZER_SEAL_HEAD_SHA"]) is None:
+              raise SystemExit("invalid finalizer Seal head SHA")
+          if not 0 < int(values["SUBJECT_SIZE"]) <= 1024 * 1024:
+              raise SystemExit("invalid subject size")
+          if not 0 < len(values["ATTESTATION_ID"]) <= 512 or re.search(r"[\x00-\x1f\x7f]", values["ATTESTATION_ID"]):
+              raise SystemExit("invalid attestation ID")
+          for name in ("SUBJECT_ARTIFACT_URL", "ATTESTATION_URL"):
+              parsed = urlparse(values[name])
+              if parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.username or parsed.password:
+                  raise SystemExit(f"invalid GitHub URL action output: {name}")
+          control = {
+              "attestation": {
+                  "bundle_sha256": hashlib.sha256(attestation).hexdigest(),
+                  "id": values["ATTESTATION_ID"],
+                  "url": values["ATTESTATION_URL"],
+              },
+              "builder": {
+                  "run_attempt": int(values["GITHUB_RUN_ATTEMPT"]),
+                  "run_id": values["GITHUB_RUN_ID"],
+                  "workflow_ref": values["GITHUB_WORKFLOW_REF"],
+                  "workflow_sha": values["GITHUB_WORKFLOW_SHA"],
+              },
+              "finalizer": {
+                  "bindings_sha256": values["FINALIZER_BINDINGS_SHA256"],
+                  "bundle_sha256": values["FINALIZER_BUNDLE_SHA256"],
+                  "bundle_artifact_api_digest": values["FINALIZER_BUNDLE_ARTIFACT_DIGEST"],
+                  "bundle_artifact_id": values["FINALIZER_BUNDLE_ARTIFACT_ID"],
+                  "reverify_control_artifact_api_digest": values["FINALIZER_REVERIFY_CONTROL_ARTIFACT_DIGEST"],
+                  "reverify_control_artifact_id": values["FINALIZER_REVERIFY_CONTROL_ARTIFACT_ID"],
+                  "reverify_evidence_artifact_api_digest": values["FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_DIGEST"],
+                  "reverify_evidence_artifact_id": values["FINALIZER_REVERIFY_EVIDENCE_ARTIFACT_ID"],
+                  "reverify_run_attempt": int(values["FINALIZER_REVERIFY_RUN_ATTEMPT"]),
+                  "reverify_run_id": values["FINALIZER_REVERIFY_RUN_ID"],
+                  "seal_run_id": values["FINALIZER_SEAL_RUN_ID"],
+                  "seal_run_attempt": int(values["FINALIZER_SEAL_RUN_ATTEMPT"]),
+                  "seal_workflow_id": values["FINALIZER_SEAL_WORKFLOW_ID"],
+                  "seal_head_sha": values["FINALIZER_SEAL_HEAD_SHA"],
+              },
+              "format": "EVOGUARD_ARTIFACT_BUILD_CONTROL_V1",
+              "source": {
+                  "base_sha": values["BASE_SHA"],
+                  "head_sha": values["HEAD_SHA"],
+                  "pull_request_number": int(values["PR_NUMBER"]),
+                  "repository": values["GITHUB_REPOSITORY"],
+                  "repository_id": values["REPOSITORY_ID"],
+                  "source_ref": values["SOURCE_REF"],
+              },
+              "subject": {
+                  "artifact_api_digest": values["SUBJECT_ARTIFACT_DIGEST"],
+                  "artifact_id": values["SUBJECT_ARTIFACT_ID"],
+                  "artifact_name": f"evoguard-artifact-subject-v1-{values['GITHUB_RUN_ATTEMPT']}",
+                  "artifact_url": values["SUBJECT_ARTIFACT_URL"],
+                  "file_name": "calc-source-artifact.json",
+                  "sha256": values["SUBJECT_SHA256"],
+                  "size": int(values["SUBJECT_SIZE"]),
+              },
+          }
+          encoded = json.dumps(control, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+          with open(control_path, "xb") as target:
+              target.write(encoded)
+          PY
+
+      - name: Preserve the audit control and exact attestation bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evoguard-artifact-build-control-v1-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/artifact-build-control.json
+            ${{ runner.temp }}/github-attestation.json
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          retention-days: 30
