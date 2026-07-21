@@ -39,5 +39,7 @@ that:
 
 See [PILOT_STATUS.md](PILOT_STATUS.md) for current state and
 [OPERATING_PROTOCOL.md](OPERATING_PROTOCOL.md) for the controlled sequence.
+The completed Round 1 sequence and machine-readable retained evidence are in
+[ROUND1_RESULTS.md](ROUND1_RESULTS.md).
 
 This repository is source-available under [LICENSE](LICENSE).

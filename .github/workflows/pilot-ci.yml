@@ -37,3 +37,28 @@ jobs:
           PY
       - name: Public fixture and workflow-contract tests
         run: python -m unittest discover -s tests -v
+      - name: Verify retained Round 1 final bundle
+        run: |
+          python - <<'PY'
+          import base64
+          import pathlib
+
+          source = pathlib.Path("evidence/round1/final-allow.evb.b64")
+          target = pathlib.Path("${{ runner.temp }}/final-allow.evb")
+          target.write_bytes(base64.b64decode("".join(source.read_text(encoding="ascii").split()), validate=True))
+          PY
+          python -I "$RUNNER_TEMP/evo-guard.pyz" verify-finalized \
+            "$RUNNER_TEMP/final-allow.evb" \
+            --trusted-pub security/finalizer-public.pem \
+            --expected-source evidence/round1/final-allow-expected-source.json \
+            --expected-context evidence/round1/final-allow-expected-context.json \
+            --require-pass > "$RUNNER_TEMP/round1-verification.json"
+          python - "$RUNNER_TEMP/round1-verification.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert result["verified"] is True, result
+          assert result["decision"] == "ALLOW", result
+          PY

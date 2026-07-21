@@ -1,0 +1,167 @@
+{
+  "format": "EVOGUARD_V4_FINALIZER_PILOT_ROUND1_V1",
+  "repository": {
+    "name": "EvoRiseKsa/evoom-guard-v4-finalizer-pilot",
+    "id": "1308128631",
+    "default_branch": "main",
+    "main_commit": "a6c9c54e7f86fcac9ee01c0bccb912aeac57891a"
+  },
+  "runtime": {
+    "release": "v4.0.2",
+    "release_commit": "3374164c65ad692049929fdc903eafb47c843a8e",
+    "zipapp_sha256": "7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3",
+    "reverify_workflow_id": "317737664",
+    "seal_workflow_id": "317737668"
+  },
+  "candidate": {
+    "pull_request": 3,
+    "state_during_observation": "open",
+    "base_sha": "a6c9c54e7f86fcac9ee01c0bccb912aeac57891a",
+    "head_sha": "03868cf84825b7aaa9bdb0efd88f215eb878b943",
+    "base_tree_sha": "5104af25f52aa1d0c38bba992eb3765a1d3b2a1b",
+    "head_tree_sha": "9b92cfe24f36174544349794a39a171cc4396761",
+    "candidate_sha256": "82c48538dee8cb9fddeaa4e14a883a28535ff794b000cfeea38ae5dac7b823bf",
+    "changed_files": 1,
+    "additions": 5,
+    "deletions": 0,
+    "approved_head_sha": "03868cf84825b7aaa9bdb0efd88f215eb878b943"
+  },
+  "policy": {
+    "policy_sha256": "8d85876b9f90fcbbd3ebc9988508f4b8f42923527491798ab9453ccb9308f29b",
+    "verifier_pack_sha256": "aa97da0bdff54432f0371e531c6d71a955a0de732a81bbf006bec60bf348ebf4",
+    "candidate_isolation_observed": "docker",
+    "verifier_pack_tests_passed": 2,
+    "verifier_pack_tests_total": 2
+  },
+  "governance": {
+    "required_status_checks_strict": true,
+    "required_status_checks": [
+      {
+        "context": "pilot-ci",
+        "app_id": 15368
+      }
+    ],
+    "required_approvals": 1,
+    "require_code_owner_review": true,
+    "dismiss_stale_reviews": true,
+    "require_last_push_approval": true,
+    "enforce_admins": true,
+    "require_linear_history": true,
+    "allow_force_pushes": false,
+    "allow_deletions": false,
+    "require_conversation_resolution": true,
+    "environment": {
+      "name": "evoguard-finalizer",
+      "id": "18526749772",
+      "required_reviewer": "MANA-awam",
+      "prevent_self_review": true,
+      "can_admins_bypass": false,
+      "deployment_branch_policy": {
+        "protected_branches": true,
+        "custom_branch_policies": false
+      }
+    },
+    "repository_variables": {
+      "EVOGUARD_GUARD_ARTIFACT_SHA256": "7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3",
+      "EVOGUARD_REVERIFY_WORKFLOW_ID": "317737664"
+    }
+  },
+  "roles": {
+    "repository_owner_account": "EvoRiseKsa",
+    "candidate_account": "MANA-awam",
+    "candidate_reviewer_account": "EvoRiseKsa",
+    "environment_reviewer_account": "MANA-awam",
+    "same_legal_owner": true,
+    "independent_review": false
+  },
+  "sequence": [
+    {
+      "phase": "bootstrap_fail_closed",
+      "reverify_run_id": "29869975583",
+      "reverify_conclusion": "success",
+      "seal_run_id": "29870012646",
+      "seal_workflow_conclusion": "success",
+      "protected_seal_job": "skipped",
+      "check_run_id": "88767477454",
+      "check_conclusion": "failure",
+      "decision": "DENY",
+      "sealed_artifact_count": 0,
+      "control": "EVOGUARD_REVERIFY_WORKFLOW_ID was absent"
+    },
+    {
+      "phase": "first_complete_allow",
+      "reverify_run_id": "29870072197",
+      "reverify_conclusion": "success",
+      "seal_run_id": "29870118470",
+      "seal_workflow_conclusion": "success",
+      "protected_seal_job": "success",
+      "check_run_id": "88767801870",
+      "check_conclusion": "success",
+      "decision": "ALLOW",
+      "sealed_artifact_count": 1,
+      "artifact_id": "8510805214",
+      "artifact_name": "evoguard-finalized-evidence-29870072197",
+      "artifact_zip_digest": "sha256:2eba9576baeffd4dc477f16125eb74780d02dd2296439efb8f4ad49ba6faa31b"
+    },
+    {
+      "phase": "cancelled_fresh_attempt",
+      "reverify_run_id": "29870611929",
+      "reverify_conclusion": "cancelled",
+      "metadata_job": "success",
+      "reverify_job": "cancelled",
+      "reverify_control_artifact_count": 1,
+      "reverify_evidence_artifact_count": 0,
+      "seal_run_id": "29870628369",
+      "seal_workflow_conclusion": "success",
+      "protected_seal_job": "skipped",
+      "check_run_id": "88769565758",
+      "check_conclusion": "failure",
+      "decision": "DENY",
+      "sealed_artifact_count": 0
+    },
+    {
+      "phase": "final_complete_allow",
+      "reverify_run_id": "29870833745",
+      "reverify_conclusion": "success",
+      "seal_run_id": "29870873532",
+      "seal_workflow_conclusion": "success",
+      "protected_seal_job": "success",
+      "check_run_id": "88770305297",
+      "check_conclusion": "success",
+      "decision": "ALLOW",
+      "sealed_artifact_count": 1,
+      "artifact_id": "8511087135",
+      "artifact_name": "evoguard-finalized-evidence-29870833745",
+      "artifact_zip_digest": "sha256:cfac7a1f2b4f3c9c422e05a31bc9e15918c014915d55718a89350303bed92b4c"
+    }
+  ],
+  "offline_verification": {
+    "verification_tool_sha256": "7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3",
+    "public_key_id": "sha256:e5ca8d43c4816900ed42b81b52cbd65a6c42105b1bdfaa00a6c100462d70faf0",
+    "first_allow": {
+      "bundle_sha256": "f6c3d123de187aa0f42fdfb47d51425800e4331600467d29b8f3a14ccb3776d4",
+      "rederived_bindings_sha256": "da90bd382c8ad3dba8fbaecfea2dbfb46e89bc6c47e85c89cbbede0e7a97f49e",
+      "bundled_bindings_sha256": "da90bd382c8ad3dba8fbaecfea2dbfb46e89bc6c47e85c89cbbede0e7a97f49e",
+      "verified": true,
+      "decision": "ALLOW"
+    },
+    "final_allow": {
+      "bundle_sha256": "d2f0f598d6b0e08c545345d86a3f762786afd2c551a29e710d9cd53e8ea4a4b3",
+      "rederived_bindings_sha256": "c16b737762d8ba078c40d851d21f696e686dbf20940c5eda579497a69a2c20f3",
+      "bundled_bindings_sha256": "c16b737762d8ba078c40d851d21f696e686dbf20940c5eda579497a69a2c20f3",
+      "verified": true,
+      "decision": "ALLOW",
+      "retained_bundle": "final-allow.evb.b64",
+      "expected_source": "final-allow-expected-source.json",
+      "expected_context": "final-allow-expected-context.json",
+      "derived_bindings": "final-allow-derived-bindings.json"
+    }
+  },
+  "claim_boundary": {
+    "same_owner_non_independent_exercise": true,
+    "production_merge_gate": false,
+    "hostile_code_vm_boundary": false,
+    "artifact_build_or_release_admission": false,
+    "independent_security_audit": false
+  }
+}
