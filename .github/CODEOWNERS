@@ -1,0 +1,7 @@
+# Same-owner technical separation only; this is not independent review.
+/.github/CODEOWNERS @MANA-awam
+/.github/workflows/ @MANA-awam
+/.evoguard.json @MANA-awam
+/security/evoguard-pack/ @MANA-awam
+/security/finalizer-public.pem @MANA-awam
+/OPERATING_PROTOCOL.md @MANA-awam

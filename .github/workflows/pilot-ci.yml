@@ -1,0 +1,39 @@
+name: Pilot CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pilot-ci:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - name: Verify v4.0.2 runtime and verifier-pack identity
+        env:
+          GUARD_SHA256: 7813db5c99f27f780ec31bbaa124b5526405783d1f53caecc32f70aabfbc13c3
+        run: |
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/evo-guard.pyz" \
+            "https://github.com/EvoRiseKsa/EvoOM-Guard-m/releases/download/v4.0.2/evo-guard.pyz"
+          printf '%s  %s\n' "$GUARD_SHA256" "$RUNNER_TEMP/evo-guard.pyz" | sha256sum --check --strict
+          python -I "$RUNNER_TEMP/evo-guard.pyz" pack-doctor security/evoguard-pack --json > "$RUNNER_TEMP/pack.json"
+          python - "$RUNNER_TEMP/pack.json" .evoguard.json <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          observed = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          policy = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+          assert observed["ok"] is True, observed
+          assert observed["pack_sha256"] == policy["expect_verifier_pack_sha256"]
+          PY
+      - name: Public fixture and workflow-contract tests
+        run: python -m unittest discover -s tests -v

@@ -1,0 +1,6 @@
+{
+  "id": "trusted-finalizer-v4-pilot-cli",
+  "version": "1",
+  "target_type": "python-cli",
+  "protocol": "calc-add-v1"
+}
