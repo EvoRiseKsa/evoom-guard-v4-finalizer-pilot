@@ -31,8 +31,13 @@ Phase A was initially merged at immutable commit
 `c6de26095c84e654c2cc5adcb00885ac9b6a2362`. Live build run `29876087399`
 then failed closed before attestation because cross-run artifact downloads did
 not pass their validated `run-id`. The correction was merged at immutable
-commit `27a233f41b9914aa67fdf70edefd45fe3dfc05ee`; the dispatcher below pins that
-reviewed correction rather than `main`.
+commit `27a233f41b9914aa67fdf70edefd45fe3dfc05ee`. A second live build,
+`29876697930`, then completed finalizer verification, canonical construction,
+GitHub attestation, and subject upload before failing closed because the upload
+action's bare digest had not been normalized to the API's `sha256:` form. That
+normalization was merged at immutable commit
+`8083c3763e3472ff8616bd645b016ad0779da91d`; the dispatcher below pins this
+latest reviewed correction rather than `main`.
 
 ## Phase B — protected admission enablement
 
