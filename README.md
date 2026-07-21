@@ -42,4 +42,10 @@ See [PILOT_STATUS.md](PILOT_STATUS.md) for current state and
 The completed Round 1 sequence and machine-readable retained evidence are in
 [ROUND1_RESULTS.md](ROUND1_RESULTS.md).
 
+The separately keyed Artifact Admission pilot is staged in bounded phases;
+see [ARTIFACT_ADMISSION_STATUS.md](ARTIFACT_ADMISSION_STATUS.md). Its trusted
+builder creates and attests a canonical regular file without executing
+candidate code. No artifact-admission decision is enabled merely by installing
+that reusable workflow.
+
 This repository is source-available under [LICENSE](LICENSE).
