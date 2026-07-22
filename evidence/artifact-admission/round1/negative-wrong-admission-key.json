@@ -1,0 +1,7 @@
+{
+  "error": "cannot verify GitHub attestation admission: artifact digest binding key_id does not match the externally trusted public key",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}

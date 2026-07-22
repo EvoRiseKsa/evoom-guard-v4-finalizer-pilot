@@ -1,0 +1,1 @@
+{"format":"EVOGUARD_ARTIFACT_ADMISSION_NEGATIVES_V1","original_evidence_unchanged":true,"rejected_cases":{"mutated_admission":1,"mutated_context":1,"mutated_finalizer":1,"mutated_raw":1,"mutated_receipt":1,"mutated_subject":1,"no_clobber":1,"wrong_admission_key":1,"wrong_build_run":1,"wrong_finalizer_key":1,"wrong_signer_digest":1,"wrong_source_digest":1,"wrong_source_ref":1}}

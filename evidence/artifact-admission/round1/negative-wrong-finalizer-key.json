@@ -1,0 +1,7 @@
+{
+  "error": "cannot verify GitHub attestation admission: finalizer prerequisite is invalid: finalized evidence bundle is invalid: bundle key_id does not match the externally trusted key",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}

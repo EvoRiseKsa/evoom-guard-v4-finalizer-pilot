@@ -1,0 +1,7 @@
+{
+  "error": "GitHub attestation source digest must exactly match expected finalizer context.head_sha",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}

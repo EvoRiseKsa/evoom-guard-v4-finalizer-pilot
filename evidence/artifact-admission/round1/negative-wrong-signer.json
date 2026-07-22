@@ -1,0 +1,7 @@
+{
+  "error": "GitHub attestation receipt policy does not exactly match external expected policy",
+  "format": "EVOGUARD_ARTIFACT_BINDING_V2",
+  "ok": false,
+  "status": "INVALID",
+  "verified": false
+}
